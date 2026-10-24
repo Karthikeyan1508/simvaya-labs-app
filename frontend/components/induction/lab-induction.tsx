@@ -1,18 +1,22 @@
 'use client';
 
 import { AlertTriangle } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSession } from '@/components/app/session-provider';
 import { MobileNav } from '@/components/lab/mobile-nav';
 import { NavBar, NavStatus } from '@/components/lab/nav-bar';
 import { Sidebar } from '@/components/lab/sidebar';
 import { AimSection } from '@/components/lab/sections/aim-section';
 import { FeedbackSection } from '@/components/lab/sections/feedback-section';
 import { ReferencesSection } from '@/components/lab/sections/references-section';
+import { OralSelfAssessment } from '@/components/viva/oral-self-assessment';
+import { VoiceAssistant } from '@/components/voice/voice-assistant';
 import { logActivity } from '@/lib/account';
-import { loadFraction, type ComponentId, type ExperimentInfo } from '@/lib/induction';
+import { isComponentId, loadFraction, type ComponentId, type ExperimentInfo } from '@/lib/induction';
 import { getInductionExperiment } from '@/lib/induction-api';
 import { EEE_SECTIONS, isEeeSectionId, type EeeSectionId } from '@/lib/sections';
 import { cn } from '@/lib/utils';
+import { buildInductionPrompt, buildInductionVoiceTools, INDUCTION_FIRST_MESSAGE, type InductionVoiceBridge } from '@/lib/voice-induction';
 import { useRig } from './lab-rig';
 import { useObservationRows } from './lab-rows';
 import { LabSimulation, type ViewMode } from './lab-simulation';
@@ -34,6 +38,9 @@ const OBJECTIVES = [
 
 // Shell for the induction motor load test: the bench state, the observation rows and the procedure progress.
 export function LabInduction() {
+  const { user } = useSession();
+  // The oral self-assessment is for students only.
+  const sections = user?.role === 'student' ? EEE_SECTIONS : EEE_SECTIONS.filter((s) => s.id !== 'oral');
   const [exp, setExp] = useState<ExperimentInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState<EeeSectionId>('aim');
@@ -60,6 +67,8 @@ export function LabInduction() {
   const [part, setPart] = useState<ComponentId | null>(null);
   const [partsSeen, setPartsSeen] = useState<ComponentId[]>([]);
   const [vivaScore, setVivaScore] = useState<number | null>(null);
+  // Set by the voice assistant. It replaces the stage's highlight until cleared or the voice moves to another stage.
+  const [voiceHighlight, setVoiceHighlight] = useState<ComponentId[] | null>(null);
   const logged = useRef(false);
 
   const safetyChecks = exp?.safetyChecks ?? [];
@@ -149,6 +158,26 @@ export function LabInduction() {
 
   const runLabel = rig.emergency ? 'E-stop' : rig.paused ? 'Paused' : rig.running ? 'Running' : 'Stopped';
 
+  const voicePrompt = useMemo(() => (exp ? buildInductionPrompt(exp) : null), [exp]);
+  const voice: InductionVoiceBridge = {
+    exp,
+    parts: exp?.components ?? null,
+    prompt: voicePrompt,
+    firstMessage: INDUCTION_FIRST_MESSAGE,
+    setVoiceHighlight: (ids) => setVoiceHighlight(ids?.length ? ids.filter(isComponentId) : null),
+    armed,
+    rig,
+    view,
+    setView,
+    setCutaway,
+    setPart: pick,
+    showSimulation: () => choose('simulation'),
+    goToStage: () => {
+      setVoiceHighlight(null);
+      choose('procedure');
+    },
+  };
+
   const status = (
     <NavStatus>
       <div className="flex items-center gap-2 px-3 py-1.5">
@@ -222,7 +251,7 @@ export function LabInduction() {
             onCutaway={setCutaway}
             part={part}
             onPart={pick}
-            highlight={highlight}
+            highlight={voiceHighlight ?? highlight}
             onGoProcedure={() => choose('procedure')}
           />
         );
@@ -234,6 +263,8 @@ export function LabInduction() {
         return <CalculationsSection exp={exp} api={obs} />;
       case 'viva':
         return <VivaSection api={obs} onScore={setVivaScore} />;
+      case 'oral':
+        return user?.role === 'student' ? <OralSelfAssessment experimentId="induction-motor" /> : null;
       case 'references':
         return (
           <ReferencesSection
@@ -256,11 +287,11 @@ export function LabInduction() {
         />
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-          <Sidebar sections={EEE_SECTIONS} active={section} onSelect={choose} badges={badges} />
+          <Sidebar sections={sections} active={section} onSelect={choose} badges={badges} />
           <MobileNav
             open={menuOpen}
             onOpenChange={setMenuOpen}
-            sections={EEE_SECTIONS}
+            sections={sections}
             active={section}
             onSelect={choose}
             badges={badges}
@@ -277,6 +308,8 @@ export function LabInduction() {
           </main>
         </div>
       </div>
+
+      <VoiceAssistant lab={voice} tools={buildInductionVoiceTools} />
     </div>
   );
 }

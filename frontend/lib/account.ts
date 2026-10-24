@@ -182,5 +182,7 @@ export const logActivity = (type: Exclude<ActivityType, 'signed_in' | 'row_recor
 // Titles for experiments that have a lab page.
 export const EXPERIMENT_TITLES: Record<string, string> = {
   'pelton-wheel': 'Performance characteristics of a Pelton turbine',
+  'induction-motor': 'Load test on a three-phase induction motor',
+  'zener-regulator': 'Zener diode as voltage regulator',
   'sorting-visualiser': 'Sorting algorithm visualiser',
 };

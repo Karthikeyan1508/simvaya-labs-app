@@ -1,10 +1,26 @@
 import type { ViewName } from '@/components/pelton/views';
 import { VIEW_LABEL } from '@/lib/lab-logic';
-import type { ComponentInfo, ExperimentDef, Readings } from '@/lib/types';
+import type { ExperimentDef, Readings } from '@/lib/types';
+import {
+  bool,
+  isOneOf,
+  LOADING,
+  num,
+  partIds,
+  partOf,
+  partText,
+  str,
+  unknownPart,
+  whole,
+  type VoiceLabBridge,
+  type VoiceTools,
+} from '@/lib/voice-lab';
+
+export type { VoiceLabBridge, VoicePart, VoiceTools, VoiceToolFactory, VoiceToolHandler, VoiceToolName } from '@/lib/voice-lab';
 
 // The lab state and setters the voice tools use. The lab page rebuilds this on every render,
 // and the tools read it through a getter, so a tool call always sees the current state.
-export interface LabBridge {
+export interface LabBridge extends VoiceLabBridge {
   exp: ExperimentDef | null;
   pumpOn: boolean;
   nozzleStep: number;
@@ -15,29 +31,11 @@ export interface LabBridge {
   setExplode: (amount: number) => void;
   setView: (name: ViewName) => void;
   setSelected: (id: string | null) => void;
-  setVoiceHighlight: (ids: string[] | null) => void;
   setPumpOn: (on: boolean) => void;
   setNozzleStep: (step: number) => void;
   goToStep: (index: number) => void;
   showScene: () => void;
 }
-
-export type VoiceToolName =
-  | 'explode_model'
-  | 'reassemble_model'
-  | 'focus_part'
-  | 'highlight_parts'
-  | 'clear_highlight'
-  | 'set_view'
-  | 'explain_part'
-  | 'read_readings'
-  | 'set_pump'
-  | 'set_nozzle'
-  | 'go_to_step'
-  | 'explain_topic';
-
-export type VoiceToolHandler = (params: Record<string, unknown>) => string;
-export type VoiceTools = Record<VoiceToolName, VoiceToolHandler>;
 
 export const VOICE_VIEWS = ['iso', 'front', 'side', 'top'] as const satisfies readonly ViewName[];
 export const VOICE_TOPICS = ['principle', 'venturi', 'efficiency', 'load', 'procedure'] as const;
@@ -57,41 +55,7 @@ const FOCUS_VIEW: Partial<Record<string, ViewName>> = {
   spring: 'brake',
 };
 
-const LOADING = 'The lab content is still loading. Ask again in a moment.';
-
-function num(v: unknown): number | null {
-  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
-  return typeof n === 'number' && Number.isFinite(n) ? n : null;
-}
-
-// A whole number in range. The model sometimes sends 3.0 or "3".
-function whole(v: unknown, min: number, max: number): number | null {
-  const n = num(v);
-  if (n === null) return null;
-  const r = Math.round(n);
-  return r >= min && r <= max ? r : null;
-}
-
-function bool(v: unknown): boolean | null {
-  if (typeof v === 'boolean') return v;
-  if (v === 'true' || v === 'on') return true;
-  if (v === 'false' || v === 'off') return false;
-  return null;
-}
-
-function str(v: unknown): string {
-  return typeof v === 'string' ? v.trim() : '';
-}
-
-const isVoiceView = (v: string): v is (typeof VOICE_VIEWS)[number] => (VOICE_VIEWS as readonly string[]).includes(v);
-const isVoiceTopic = (v: string): v is VoiceTopic => (VOICE_TOPICS as readonly string[]).includes(v);
-
-const partOf = (exp: ExperimentDef | null, id: string): ComponentInfo | undefined =>
-  exp?.components.find((c) => c.id === id);
-
-function partText(c: ComponentInfo): string {
-  return `${c.label}. ${c.description}${c.specs.length ? ` Specs: ${c.specs.join('; ')}.` : ''}`;
-}
+const expPart = (b: LabBridge, id: string) => partOf(b.exp?.components ?? null, id);
 
 // Efficiency and load formulas are not in the experiment payload, so they follow pelton-wheel.physics.ts.
 export function topicText(exp: ExperimentDef, topic: VoiceTopic): string {
@@ -99,7 +63,7 @@ export function topicText(exp: ExperimentDef, topic: VoiceTopic): string {
     case 'principle':
       return exp.theory;
     case 'venturi': {
-      const v = partOf(exp, 'venturi');
+      const v = partOf(exp.components, 'venturi');
       return v ? `${v.description} ${v.specs.join('; ')}.` : exp.theory;
     }
     case 'efficiency':
@@ -124,8 +88,6 @@ export function readingsText(b: LabBridge): string {
 // Handlers take the agent's arguments as they arrive, so every one is checked here.
 // Each returns the short text the agent reads back.
 export function buildVoiceTools(get: () => LabBridge): VoiceTools {
-  const unknownPart = (b: LabBridge) => `Unknown part. Use one of: ${b.exp?.components.map((c) => c.id).join(', ')}.`;
-
   return {
     explode_model(p) {
       const b = get();
@@ -145,8 +107,8 @@ export function buildVoiceTools(get: () => LabBridge): VoiceTools {
     focus_part(p) {
       const b = get();
       if (!b.exp) return LOADING;
-      const c = partOf(b.exp, str(p.partId));
-      if (!c) return unknownPart(b);
+      const c = expPart(b, str(p.partId));
+      if (!c) return unknownPart(b.exp.components);
       b.showScene();
       b.setSelected(c.id);
       const view = FOCUS_VIEW[c.id];
@@ -157,11 +119,11 @@ export function buildVoiceTools(get: () => LabBridge): VoiceTools {
     highlight_parts(p) {
       const b = get();
       if (!b.exp) return LOADING;
-      const ids = [...new Set((Array.isArray(p.partIds) ? p.partIds : []).map(str))].filter((id) => partOf(b.exp, id));
-      if (ids.length === 0) return unknownPart(b);
+      const ids = partIds(b.exp.components, p.partIds);
+      if (ids.length === 0) return unknownPart(b.exp.components);
       b.showScene();
       b.setVoiceHighlight(ids);
-      return `Highlighted ${ids.map((id) => partOf(b.exp, id)?.label ?? id).join(', ')}.`;
+      return `Highlighted ${ids.map((id) => expPart(b, id)?.label ?? id).join(', ')}.`;
     },
 
     clear_highlight() {
@@ -172,7 +134,7 @@ export function buildVoiceTools(get: () => LabBridge): VoiceTools {
     set_view(p) {
       const b = get();
       const view = str(p.view);
-      if (!isVoiceView(view)) return `View must be one of: ${VOICE_VIEWS.join(', ')}.`;
+      if (!isOneOf(VOICE_VIEWS, view)) return `View must be one of: ${VOICE_VIEWS.join(', ')}.`;
       b.showScene();
       b.setView(view);
       return `Camera set to ${VIEW_LABEL[view]}.`;
@@ -181,8 +143,8 @@ export function buildVoiceTools(get: () => LabBridge): VoiceTools {
     explain_part(p) {
       const b = get();
       if (!b.exp) return LOADING;
-      const c = partOf(b.exp, str(p.partId));
-      return c ? partText(c) : unknownPart(b);
+      const c = expPart(b, str(p.partId));
+      return c ? partText(c) : unknownPart(b.exp.components);
     },
 
     read_readings() {
@@ -222,7 +184,7 @@ export function buildVoiceTools(get: () => LabBridge): VoiceTools {
       const b = get();
       if (!b.exp) return LOADING;
       const topic = str(p.topic);
-      if (!isVoiceTopic(topic)) return `Topic must be one of: ${VOICE_TOPICS.join(', ')}.`;
+      if (!isOneOf(VOICE_TOPICS, topic)) return `Topic must be one of: ${VOICE_TOPICS.join(', ')}.`;
       return topicText(b.exp, topic);
     },
   };

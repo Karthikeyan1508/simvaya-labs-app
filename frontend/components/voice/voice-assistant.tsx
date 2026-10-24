@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/account';
 import { cn } from '@/lib/utils';
 import { fetchSignedUrl } from '@/lib/voice-api';
-import { buildVoicePrompt, VOICE_FIRST_MESSAGE } from '@/lib/voice-prompt';
-import { buildVoiceTools, type LabBridge, type VoiceTools } from '@/lib/voice-tools';
 import { partsMentioned } from '@/lib/voice-parts';
+import type { VoiceLabBridge, VoiceToolFactory, VoiceTools } from '@/lib/voice-lab';
 
 type Line = { id: number; role: 'user' | 'agent'; text: string };
 type State = 'connecting' | 'listening' | 'speaking' | 'error' | 'ended';
@@ -49,19 +48,20 @@ function Indicator({ state }: { state: State }) {
   );
 }
 
-// The assistant floats over the lab. Its tools change the lab state through the bridge passed in.
-export function VoiceAssistant({ lab }: { lab: LabBridge }) {
+// The assistant floats over a lab. Its tools change the lab state through the lab's bridge. Each lab passes its own
+// tool factory (a module-level function, so the tools are built once).
+export function VoiceAssistant<L extends VoiceLabBridge>({ lab, tools }: { lab: L; tools: VoiceToolFactory<L> }) {
   return (
     <ConversationProvider>
-      <AssistantPanel lab={lab} />
+      <AssistantPanel lab={lab} makeTools={tools} />
     </ConversationProvider>
   );
 }
 
-function AssistantPanel({ lab }: { lab: LabBridge }) {
+function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; makeTools: VoiceToolFactory<L> }) {
   const latest = useRef(lab);
   latest.current = lab;
-  const tools = useMemo<VoiceTools>(() => buildVoiceTools(() => latest.current), []);
+  const tools = useMemo<VoiceTools>(() => makeTools(() => latest.current), [makeTools]);
 
   const [open, setOpen] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -77,7 +77,7 @@ function AssistantPanel({ lab }: { lab: LabBridge }) {
       setLines((prev) => [...prev.slice(-5), { id, role, text }]);
       // What the assistant names is lit on the rig, even when the model does not call the highlight tool.
       if (role === 'agent') {
-        const ids = partsMentioned(latest.current.exp, text);
+        const ids = partsMentioned(latest.current.parts, text);
         if (ids.length) latest.current.setVoiceHighlight(ids);
       }
     },
@@ -106,8 +106,8 @@ function AssistantPanel({ lab }: { lab: LabBridge }) {
 
   const start = async () => {
     const id = ++attempt.current;
-    const { exp } = latest.current;
-    if (!exp) return;
+    const { prompt, firstMessage } = latest.current;
+    if (!prompt) return;
     setStartError(null);
     setLines([]);
     setOpen(true);
@@ -119,7 +119,7 @@ function AssistantPanel({ lab }: { lab: LabBridge }) {
       startSession({
         signedUrl,
         connectionType: 'websocket',
-        overrides: { agent: { firstMessage: VOICE_FIRST_MESSAGE, prompt: { prompt: buildVoicePrompt(exp) } } },
+        overrides: { agent: { firstMessage, prompt: { prompt } } },
         clientTools: tools,
       });
     } catch (e) {
@@ -181,7 +181,7 @@ function AssistantPanel({ lab }: { lab: LabBridge }) {
         </section>
       )}
 
-      <Button onClick={onButton} disabled={!live && !lab.exp} aria-expanded={open} className="shadow-lg">
+      <Button onClick={onButton} disabled={!live && !lab.prompt} aria-expanded={open} className="shadow-lg">
         <Mic />
         {live ? (open ? 'Hide assistant' : 'Show assistant') : 'Ask the assistant'}
       </Button>

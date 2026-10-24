@@ -1,4 +1,15 @@
-// Lab text for the Zener voltage regulator experiment. Plain data, shared by the page and the tests.
+// Lab text for the Zener voltage regulator experiment. Plain data, shared by the page, the voice assistant and the tests.
+import { VZ_V } from './solver.ts';
+
+export const ZENER_TITLE = 'Zener diode as voltage regulator';
+
+// The relations shown in the theory section.
+export const ZENER_RELATIONS = [
+  { label: 'Zener voltage', value: `Vz = ${VZ_V} V` },
+  { label: 'Output while regulating', value: 'Vout = Vz' },
+  { label: 'Zener current', value: 'Iz = (Vs - Vz) / Rs - IL' },
+  { label: 'Zener power', value: 'Pz = Vz x Iz' },
+];
 
 export const ZENER_AIM =
   'Use a Zener diode as a shunt voltage regulator, and observe how the output voltage changes with the load and the input voltage.';

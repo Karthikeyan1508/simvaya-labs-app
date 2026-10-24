@@ -6,8 +6,8 @@ import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EXPERIMENT_TITLES } from '@/lib/account';
-import { getExperiment } from '@/lib/api';
-import type { ComponentInfo, ExperimentDef } from '@/lib/types';
+import type { ComponentInfo } from '@/lib/types';
+import { labParts } from '@/lib/viva-parts';
 import {
   KIND_LABEL,
   errorMessage,
@@ -24,7 +24,7 @@ import { OralInterview } from './oral-interview';
 export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void }) {
   const vivaId = Number(id);
   const [detail, setDetail] = useState<MyVivaDetail | null>(null);
-  const [exp, setExp] = useState<ExperimentDef | null>(null);
+  const [parts, setParts] = useState<ComponentInfo[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,9 +36,10 @@ export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vivaId]);
 
+  const experimentId = detail?.viva.experimentId;
   useEffect(() => {
-    getExperiment().then(setExp).catch(() => undefined);
-  }, []);
+    if (experimentId) labParts(experimentId).then(setParts).catch(() => undefined);
+  }, [experimentId]);
 
   if (!Number.isInteger(vivaId)) return <p className="text-sm text-destructive">This viva does not exist.</p>;
   if (!detail) {
@@ -50,7 +51,6 @@ export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void })
   }
 
   const { viva, questions, attempt } = detail;
-  const parts: ComponentInfo[] = exp?.components ?? [];
   const labels = Object.fromEntries(parts.map((p) => [p.id, p.label]));
   const n = questions.length;
   const back = onExit ? null : (

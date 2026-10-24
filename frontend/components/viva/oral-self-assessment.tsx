@@ -6,10 +6,15 @@ import { Button } from '@/components/ui/button';
 import { errorMessage, listMyVivas, startSelfAssessment } from '@/lib/viva';
 import { VivaAttempt } from './viva-attempt';
 
-const PELTON_WHEEL = 'pelton-wheel';
+const LAB_NAMES: Record<string, string> = {
+  'pelton-wheel': 'the Pelton wheel',
+  'induction-motor': 'the three-phase induction motor',
+  'zener-regulator': 'the Zener voltage regulator',
+  'sorting-visualiser': 'the sorting algorithm visualiser',
+};
 
 // Lab section for students only (the lab page hides it for others). The oral viva runs on this page, not in the viva list.
-export function OralSelfAssessment() {
+export function OralSelfAssessment({ experimentId }: { experimentId: string }) {
   const [vivaId, setVivaId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -18,7 +23,7 @@ export function OralSelfAssessment() {
   useEffect(() => {
     listMyVivas()
       .then((vivas) => {
-        const open = vivas.find((v) => v.experimentId === PELTON_WHEEL && v.myAttempt?.status !== 'submitted');
+        const open = vivas.find((v) => v.experimentId === experimentId && v.myAttempt?.status !== 'submitted');
         if (open) setVivaId(open.id);
       })
       .catch((e: unknown) => setError(errorMessage(e)));
@@ -29,7 +34,7 @@ export function OralSelfAssessment() {
     setBusy(true);
     setError('');
     try {
-      const res = await startSelfAssessment(PELTON_WHEEL);
+      const res = await startSelfAssessment(experimentId);
       setVivaId(res.id);
     } catch (e) {
       setError(errorMessage(e));
@@ -50,8 +55,8 @@ export function OralSelfAssessment() {
       {vivaId === null ? (
         <div className="max-w-2xl space-y-5">
           <p className="text-[15px] leading-relaxed text-muted-foreground">
-            The examiner asks about the Pelton wheel: its theory, the procedure and what you observed. Writing the
-            questions can take up to a minute.
+            The examiner asks about {LAB_NAMES[experimentId]}: its theory, the procedure and what you observed. Writing
+            the questions can take up to a minute.
           </p>
           <Button onClick={start} disabled={busy}>
             {busy ? 'Writing your questions…' : 'Start self-assessment'}

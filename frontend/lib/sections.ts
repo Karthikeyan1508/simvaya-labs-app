@@ -21,6 +21,14 @@ export interface SectionDef<T extends string> {
   icon: LucideIcon;
 }
 
+// The oral self-assessment entry, the same on every lab page.
+export const ORAL_SECTION: SectionDef<'oral'> = {
+  id: 'oral',
+  label: 'Oral self-assessment',
+  hint: 'Answer out loud',
+  icon: Mic,
+};
+
 export const SECTION_IDS = [
   'aim',
   'theory',
@@ -58,6 +66,7 @@ export const SORT_SECTION_IDS = [
   'calculations',
   'graphs',
   'quiz',
+  'oral',
   'references',
   'feedback',
 ] as const;
@@ -71,6 +80,7 @@ export const SORT_SECTIONS: SectionDef<SortSectionId>[] = [
   { id: 'calculations', label: 'Calculations', hint: 'Counts, formulas, runs', icon: Calculator },
   { id: 'graphs', label: 'Time complexity', hint: 'Work against input size', icon: TrendingUp },
   { id: 'quiz', label: 'Quiz', hint: 'Five questions', icon: ClipboardCheck },
+  ORAL_SECTION,
   { id: 'references', label: 'References', hint: 'Sources', icon: Library },
   { id: 'feedback', label: 'Feedback', hint: 'Tell us what you think', icon: MessageSquare },
 ];
@@ -87,6 +97,7 @@ export const EEE_SECTION_IDS = [
   'graphs',
   'calculations',
   'viva',
+  'oral',
   'references',
   'feedback',
 ] as const;
@@ -102,6 +113,7 @@ export const EEE_SECTIONS: SectionDef<EeeSectionId>[] = [
   { id: 'graphs', label: 'Graphs', hint: 'Against output power', icon: TrendingUp },
   { id: 'calculations', label: 'Calculations', hint: 'Formulas for one row', icon: Calculator },
   { id: 'viva', label: 'Viva', hint: 'Check your understanding', icon: ClipboardCheck },
+  ORAL_SECTION,
   { id: 'references', label: 'References', hint: 'Sources', icon: Library },
   { id: 'feedback', label: 'Feedback', hint: 'Tell us what you think', icon: MessageSquare },
 ];

@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertTriangle } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ViewName } from '@/components/pelton/views';
 import { useSession } from '@/components/app/session-provider';
 import { VoiceAssistant } from '@/components/voice/voice-assistant';
@@ -13,7 +13,8 @@ import { HANGER_KG, STEP_VIEW, autoDone } from '@/lib/lab-logic';
 import { POSTTEST, PRETEST } from '@/lib/quiz';
 import { SECTIONS, isSectionId, type SectionId } from '@/lib/sections';
 import type { ExperimentDef, ObservationRow, Readings, RigState } from '@/lib/types';
-import type { LabBridge } from '@/lib/voice-tools';
+import { VOICE_FIRST_MESSAGE, buildVoicePrompt } from '@/lib/voice-prompt';
+import { buildVoiceTools, type LabBridge } from '@/lib/voice-tools';
 import { AimSection } from './sections/aim-section';
 import { CalculationsSection } from './sections/calculations-section';
 import { FeedbackSection } from './sections/feedback-section';
@@ -245,8 +246,13 @@ export function LabPage() {
     posttest: quiz.post !== null ? `${quiz.post}/${POSTTEST.length}` : undefined,
   };
 
+  const voicePrompt = useMemo(() => (exp ? buildVoicePrompt(exp) : null), [exp]);
+
   const lab: LabBridge = {
     exp,
+    parts: exp?.components ?? null,
+    prompt: voicePrompt,
+    firstMessage: VOICE_FIRST_MESSAGE,
     pumpOn,
     nozzleStep,
     deadWeightKg,
@@ -359,7 +365,7 @@ export function LabPage() {
           />
         );
       case 'oral':
-        return user?.role === 'student' ? <OralSelfAssessment /> : null;
+        return user?.role === 'student' ? <OralSelfAssessment experimentId="pelton-wheel" /> : null;
       case 'references':
         return <ReferencesSection />;
       case 'feedback':
@@ -418,7 +424,7 @@ export function LabPage() {
         </div>
       </div>
 
-      <VoiceAssistant lab={lab} />
+      <VoiceAssistant lab={lab} tools={buildVoiceTools} />
     </div>
   );
 }

@@ -64,6 +64,7 @@ export interface ZenerSimulationProps {
   onMode: (m: ZenerMode) => void;
   wiring: Wiring;
   onWiring: (w: Wiring) => void;
+  voiceHighlight?: string[] | null; // set by the voice assistant; replaces the step's highlight until cleared
 }
 
 // Pelton-style simulation: the step bar, the readings as gauges, the 3D bench with its view presets, labels and
@@ -71,7 +72,7 @@ export interface ZenerSimulationProps {
 export function ZenerSimulation(p: ZenerSimulationProps) {
   const root = useRef<HTMLDivElement>(null);
   const [isFull, setIsFull] = useState(false);
-  const highlight = p.steps[p.stepIndex]?.highlight ?? [];
+  const highlight = p.voiceHighlight ?? p.steps[p.stepIndex]?.highlight ?? [];
   const part = ZENER_PARTS.find((x) => x.id === p.selected) ?? null;
   const procedure: ProcedureStep[] = p.steps.map((s, i) => ({ step: i + 1, text: s.text, highlight: s.highlight }));
   const shown = p.op && p.switchOn ? p.op : null;

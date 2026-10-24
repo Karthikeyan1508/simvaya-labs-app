@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSession } from '@/components/app/session-provider';
 import { AimSection } from '@/components/lab/sections/aim-section';
 import { FeedbackSection } from '@/components/lab/sections/feedback-section';
 import { QuizSection } from '@/components/lab/sections/quiz-section';
@@ -10,8 +11,19 @@ import { NavBar, NavStatus } from '@/components/lab/nav-bar';
 import { ShaderBackground } from '@/components/lab/shader-background';
 import { Sidebar } from '@/components/lab/sidebar';
 import { Kbd } from '@/components/ui/kbd';
+import { OralSelfAssessment } from '@/components/viva/oral-self-assessment';
+import { VoiceAssistant } from '@/components/voice/voice-assistant';
 import { logActivity } from '@/lib/account';
 import { SORT_SECTIONS, isSortSectionId, type SortSectionId } from '@/lib/sections';
+import { cn } from '@/lib/utils';
+import {
+  buildSortingPrompt,
+  buildSortingVoiceTools,
+  SORTING_FIRST_MESSAGE,
+  SORTING_TITLE,
+  SORTING_VOICE_PARTS,
+  type SortingVoiceBridge,
+} from '@/lib/voice-sorting';
 import { BarChart } from './bar-chart';
 import { CodeReference } from './code-reference';
 import { describeStep, makeInput, pivotAt, quickSort, seededRandom, type Preset } from './engine';
@@ -40,6 +52,8 @@ const APPARATUS = [
   'Counters for comparisons and swaps',
 ];
 
+const VOICE_PROMPT = buildSortingPrompt({ aim: AIM, objectives: OBJECTIVES, apparatus: APPARATUS });
+
 // Check each citation against the library record before publishing.
 const SORT_REFERENCES: Reference[] = [
   {
@@ -61,6 +75,9 @@ const SORT_REFERENCES: Reference[] = [
 
 // The sorting lab: the lab shell with sections. The visualiser holds the run, so the other sections read the same steps.
 export function SortingLab() {
+  const { user } = useSession();
+  // The oral self-assessment is for students only.
+  const sections = user?.role === 'student' ? SORT_SECTIONS : SORT_SECTIONS.filter((s) => s.id !== 'oral');
   const [section, setSection] = useState<SortSectionId>('aim');
   const [menuOpen, setMenuOpen] = useState(false);
   const [size, setSize] = useState(INITIAL_SIZE);
@@ -72,6 +89,9 @@ export function SortingLab() {
   const [speed, setSpeed] = useState(4);
   const [runs, setRuns] = useState<RecordedRun[]>([]);
   const [quizScore, setQuizScore] = useState<number | null>(null);
+  // Set by the voice assistant: the panels it names are ringed until cleared.
+  const [voiceHighlight, setVoiceHighlight] = useState<string[] | null>(null);
+  const ring = (id: string) => (voiceHighlight?.includes(id) ? 'rounded-lg ring-2 ring-primary' : undefined);
   const logged = useRef(false);
 
   // The section lives in the URL hash so a refresh keeps you in place. The hash is written only on a
@@ -175,22 +195,24 @@ export function SortingLab() {
 
   const renderVisualiser = () => (
     <div className="flex flex-1 flex-col gap-3 xl:min-h-0">
-      <StepBar
-        at={at}
-        total={total}
-        text={current ? describeStep(current) : 'Press Play or Next to start the sort.'}
-        playing={playing}
-        speed={speed}
-        onSpeed={setSpeed}
-        onPlay={togglePlay}
-        onPrev={() => stepBy(-1)}
-        onNext={() => stepBy(1)}
-        onReset={reset}
-      />
+      <div className={ring('playback')}>
+        <StepBar
+          at={at}
+          total={total}
+          text={current ? describeStep(current) : 'Press Play or Next to start the sort.'}
+          playing={playing}
+          speed={speed}
+          onSpeed={setSpeed}
+          onPlay={togglePlay}
+          onPrev={() => stepBy(-1)}
+          onNext={() => stepBy(1)}
+          onReset={reset}
+        />
+      </div>
 
       <div className="grid min-w-0 gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex min-h-0 min-w-0 flex-col gap-3">
-          <section className="glass min-w-0 rounded-lg p-4 md:p-5">
+          <section className={cn('glass min-w-0 rounded-lg p-4 md:p-5', ring('bars'))}>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
                 <Legend swatch="bg-foreground" label="Pivot" />
@@ -198,7 +220,7 @@ export function SortingLab() {
                 <Legend swatch="bg-foreground/55" label="Placed" />
                 <Legend swatch="bg-muted-foreground/35" label="Not yet" />
               </div>
-              <div className="num flex gap-4 text-xs text-muted-foreground">
+              <div className={cn('num flex gap-4 text-xs text-muted-foreground', ring('counters'))}>
                 <span>
                   Comparisons <span className="text-sm font-semibold text-foreground">{comparisons}</span>
                 </span>
@@ -237,7 +259,7 @@ export function SortingLab() {
           </section>
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 xl:flex-row">
-            <div className="min-h-0 xl:w-80 xl:shrink-0 xl:overflow-y-auto">
+            <div className={cn('min-h-0 xl:w-80 xl:shrink-0 xl:overflow-y-auto', ring('input'))}>
               <InputPanel
                 size={size}
                 preset={preset}
@@ -246,13 +268,13 @@ export function SortingLab() {
                 onShuffle={() => newInput(size, 'random')}
               />
             </div>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', ring('steps'))}>
               <StepList steps={steps} at={at} onJump={(n) => setCur(n)} />
             </div>
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col">
+        <div className={cn('flex min-h-0 min-w-0 flex-col', ring('code'))}>
           <CodeReference />
         </div>
       </div>
@@ -298,6 +320,8 @@ export function SortingLab() {
             onScore={setQuizScore}
           />
         );
+      case 'oral':
+        return user?.role === 'student' ? <OralSelfAssessment experimentId="sorting-visualiser" /> : null;
       case 'references':
         return (
           <ReferencesSection
@@ -324,6 +348,19 @@ export function SortingLab() {
     </NavStatus>
   );
 
+  const voice: SortingVoiceBridge = {
+    parts: SORTING_VOICE_PARTS,
+    prompt: VOICE_PROMPT,
+    firstMessage: SORTING_FIRST_MESSAGE,
+    setVoiceHighlight,
+    steps,
+    at,
+    size,
+    preset,
+    setStep: setCur,
+    showVisualiser: () => choose('visualiser'),
+  };
+
   return (
     <div className="relative h-dvh overflow-hidden">
       <ShaderBackground />
@@ -331,18 +368,18 @@ export function SortingLab() {
       <div className="relative z-10 flex h-full flex-col gap-3 p-3 md:p-4">
         <NavBar
           kicker="Computer Science"
-          title="Sorting algorithm visualiser"
+          title={SORTING_TITLE}
           progress={total ? at / total : 0}
           onMenu={() => setMenuOpen(true)}
           status={status}
         />
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-          <Sidebar sections={SORT_SECTIONS} active={section} onSelect={choose} badges={badges} />
+          <Sidebar sections={sections} active={section} onSelect={choose} badges={badges} />
           <MobileNav
             open={menuOpen}
             onOpenChange={setMenuOpen}
-            sections={SORT_SECTIONS}
+            sections={sections}
             active={section}
             onSelect={choose}
             badges={badges}
@@ -353,6 +390,8 @@ export function SortingLab() {
           </main>
         </div>
       </div>
+
+      <VoiceAssistant lab={voice} tools={buildSortingVoiceTools} />
     </div>
   );
 }

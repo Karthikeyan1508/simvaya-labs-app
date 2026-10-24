@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '@/components/app/page-header';
 import { SubmittedVivaList } from './submitted-viva-list';
@@ -30,11 +29,7 @@ export function StudentVivaList() {
         <div className="glass rounded-lg p-8 text-center">
           <p className="font-medium">No finished vivas yet</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Start one on the{' '}
-            <Link href="/experiments/pelton-wheel#oral" className="text-primary underline-offset-4 hover:underline">
-              Pelton wheel lab
-            </Link>
-            .
+            Start one in the Oral self-assessment section of any lab.
           </p>
         </div>
       )}

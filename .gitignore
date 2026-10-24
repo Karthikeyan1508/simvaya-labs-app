@@ -1,0 +1,17 @@
+# Local secrets written by `elevenlabs onboard`
+/.env.local
+
+# Secrets: env files stay local, the backend reads backend/.env
+.env
+.env.*
+backend/.env
+backend/.env.*
+
+# Build output and dependencies
+node_modules/
+.next/
+dist/
+
+# Local SQLite database (created on first run)
+backend/data/
+backend-dev.log

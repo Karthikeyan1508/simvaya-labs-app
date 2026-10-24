@@ -1,0 +1,369 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Light: warm off-white paper, charcoal ink, amber for primary actions and warnings */
+:root {
+  --background: #fffbf5;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --primary: #d97706;
+  --primary-foreground: #18181b;
+  --secondary: #f3eee6;
+  --secondary-foreground: #18181b;
+  --muted: #f5f1ea;
+  --muted-foreground: #71717a;
+  --accent: #fef3c7;
+  --accent-foreground: #92400e;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #e8e2d6;
+  --input: #e8e2d6;
+  --ring: #d97706;
+  --chart-1: #d97706;
+  --chart-2: #fcd34d;
+  --chart-3: #92400e;
+  --chart-4: #71717a;
+  --chart-5: #fde68a;
+  --radius: 0.25rem;
+  --gradient-amber: linear-gradient(135deg, #fbbf24 0%, #d97706 55%, #b45309 100%);
+  --gradient-surface: linear-gradient(180deg, #ffffff 0%, #fffaf2 100%);
+  --gradient-glow: radial-gradient(120% 100% at 0% 0%, rgb(251 191 36 / 0.3) 0%, rgb(251 191 36 / 0) 60%);
+}
+
+/* Dark: charcoal surfaces (#18181b, #27272a) with the same amber */
+.dark {
+  --background: #18181b;
+  --foreground: #fffbf5;
+  --card: #27272a;
+  --card-foreground: #fffbf5;
+  --popover: #303035;
+  --popover-foreground: #fffbf5;
+  --primary: #d97706;
+  --primary-foreground: #18181b;
+  --secondary: #3f3f46;
+  --secondary-foreground: #fffbf5;
+  --muted: #222225;
+  --muted-foreground: #a1a1aa;
+  --accent: #451a03;
+  --accent-foreground: #fef3c7;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: #d97706;
+  --chart-1: #f59e0b;
+  --chart-2: #fde68a;
+  --chart-3: #d97706;
+  --chart-4: #a1a1aa;
+  --chart-5: #78350f;
+  --gradient-amber: linear-gradient(135deg, #fbbf24 0%, #d97706 55%, #b45309 100%);
+  --gradient-surface: linear-gradient(180deg, #2b2b30 0%, #232327 100%);
+  --gradient-glow: radial-gradient(120% 100% at 0% 0%, rgb(217 119 6 / 0.24) 0%, rgb(217 119 6 / 0) 60%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 28%, transparent);
+  }
+}
+
+/* Thin, quiet scrollbars everywhere. The page keeps its scrollbar even when it fits, so nothing shifts. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent) transparent;
+}
+
+html {
+  overflow-y: scroll;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+.overflow-auto,
+.overflow-y-auto {
+  scrollbar-gutter: stable;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--foreground) 16%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--foreground) 30%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Numbers read as instrument readouts */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Glass panels: translucent, blurred, with a hairline edge. Unlayered so it overrides bg utilities. */
+.glass {
+  background: color-mix(in oklab, var(--card) 52%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 12px 32px -24px rgb(0 0 0 / 0.25);
+}
+
+/* Amber gradient. Used for active states, the primary action and key numbers. */
+.orange-gradient {
+  background: var(--gradient-amber);
+}
+
+.text-gradient-orange {
+  background: var(--gradient-amber);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.surface-gradient {
+  background: var(--gradient-surface);
+}
+
+.glow-card {
+  background: var(--gradient-glow), var(--gradient-surface);
+}
+
+/* Progress and meter fills run left to right. */
+.fill-gradient {
+  background: linear-gradient(90deg, #fcd34d 0%, #d97706 100%);
+}
+
+/* Chip buttons: the toggles built by hand in the lab and dashboard. Pressed uses the amber gradient. */
+.btn-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  outline: none;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+}
+
+.btn-chip:hover {
+  color: var(--foreground);
+  border-color: color-mix(in oklab, var(--foreground) 18%, transparent);
+}
+
+.btn-chip:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px color-mix(in oklab, var(--primary) 45%, transparent);
+}
+
+.btn-chip:active {
+  transform: scale(0.97);
+}
+
+.btn-chip:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.btn-chip[aria-pressed='true'] {
+  background: var(--gradient-amber);
+  border-color: transparent;
+  color: var(--primary-foreground);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.4),
+    0 6px 16px -8px rgb(217 119 6 / 0.8);
+}
+
+.rig-label:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Popups rise and fade in from their trigger, then settle. Closing is quicker. */
+@keyframes popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes popup-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+}
+
+.popover-motion[data-open] {
+  animation: popup-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.popover-motion[data-closed] {
+  animation: popup-out 140ms ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover-motion[data-open],
+  .popover-motion[data-closed] {
+    animation-duration: 1ms;
+  }
+}
+
+/* Pump-on indicator: a quiet halo, no animation */
+.led {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+/* 3D labels pinned over the rig */
+.rig-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: -11px 0 0 -11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 2px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+  background: color-mix(in oklab, var(--card) 90%, transparent);
+  box-shadow: 0 4px 14px -8px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(6px);
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.rig-label:hover {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 30%, transparent);
+}
+
+.rig-label.is-selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 45%, transparent);
+}
+
+.rig-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.chart-mono .recharts-cartesian-axis-tick-value,
+.chart-mono .recharts-text {
+  font-family: var(--font-mono);
+}
+
+/* Background shader sits well behind the content. Tune these two values to change its strength. */
+.shader-bg {
+  opacity: 0.4;
+  transition: opacity 0.6s ease;
+}
+
+.dark .shader-bg {
+  opacity: 0.5;
+}

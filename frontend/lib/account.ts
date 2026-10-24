@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, getRedirectResult, signInWithRedirect } from 'firebase/auth';
 import type { ObservationRow as InductionObservationRow } from '@/lib/induction';
 import type { ObservationRow } from '@/lib/types';
 import { firebaseAuth } from '@/lib/firebase';
@@ -126,10 +126,19 @@ export interface ActivityItem {
 export const login = (email: string, password: string) =>
   post<{ token: string; user: User }>('/auth/login', { email, password }, false);
 
-// Google sign-in runs in Firebase. The backend checks the ID token and returns the same session token as password login.
-export const googleSignIn = async () => {
-  const cred = await signInWithPopup(firebaseAuth(), new GoogleAuthProvider());
-  const idToken = await cred.user.getIdToken();
+// Google sign-in uses a full-page redirect. A popup opened after an await is blocked by browsers.
+export const startGoogleSignIn = () => {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return signInWithRedirect(firebaseAuth(), provider);
+};
+
+// Call on the login page load. Returns null when this visit did not come back from Google.
+// The backend checks the ID token and returns the same session token as password login.
+export const finishGoogleSignIn = async () => {
+  const result = await getRedirectResult(firebaseAuth());
+  if (!result) return null;
+  const idToken = await result.user.getIdToken();
   return post<{ token: string; user: User }>('/auth/firebase', { idToken }, false);
 };
 export const logout = () => post<{ ok: true }>('/auth/logout');

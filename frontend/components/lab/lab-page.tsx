@@ -3,7 +3,9 @@
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ViewName } from '@/components/pelton/views';
+import { useSession } from '@/components/app/session-provider';
 import { VoiceAssistant } from '@/components/voice/voice-assistant';
+import { OralSelfAssessment } from '@/components/viva/oral-self-assessment';
 import { fetchRecordings, logActivity, saveRecording } from '@/lib/account';
 import { calculateRow, getExperiment, runSweep, simulateRig } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -28,6 +30,9 @@ import { MobileNav } from './mobile-nav';
 const EMPTY_READINGS: Readings = { p1: 0, p2: 0, pp: 0, speedRpm: 0, springKg: 0 };
 
 export function LabPage() {
+  const { user } = useSession();
+  // The oral self-assessment is for students only.
+  const sections = user?.role === 'student' ? SECTIONS : SECTIONS.filter((s) => s.id !== 'oral');
   const [exp, setExp] = useState<ExperimentDef | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -353,6 +358,8 @@ export function LabPage() {
             onScore={(s) => setQuiz((q) => ({ ...q, post: s }))}
           />
         );
+      case 'oral':
+        return user?.role === 'student' ? <OralSelfAssessment /> : null;
       case 'references':
         return <ReferencesSection />;
       case 'feedback':
@@ -389,11 +396,11 @@ export function LabPage() {
         />
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-          <Sidebar sections={SECTIONS} active={section} onSelect={choose} badges={badges} />
+          <Sidebar sections={sections} active={section} onSelect={choose} badges={badges} />
           <MobileNav
             open={menuOpen}
             onOpenChange={setMenuOpen}
-            sections={SECTIONS}
+            sections={sections}
             active={section}
             onSelect={choose}
             badges={badges}

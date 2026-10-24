@@ -20,8 +20,8 @@ import {
 import { OralInterview } from './oral-interview';
 
 // The oral viva: the examiner asks by voice, the student answers by voice, and the transcript is kept with the marks.
-// Typed answers are not offered for vivas.
-export function VivaAttempt({ id }: { id: string }) {
+// Typed answers are not offered for vivas. With onExit (the experiment page) there is no link to the viva list.
+export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void }) {
   const vivaId = Number(id);
   const [detail, setDetail] = useState<MyVivaDetail | null>(null);
   const [exp, setExp] = useState<ExperimentDef | null>(null);
@@ -53,7 +53,7 @@ export function VivaAttempt({ id }: { id: string }) {
   const parts: ComponentInfo[] = exp?.components ?? [];
   const labels = Object.fromEntries(parts.map((p) => [p.id, p.label]));
   const n = questions.length;
-  const back = (
+  const back = onExit ? null : (
     <Link href="/dashboard/viva" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
       <ArrowLeft /> All vivas
     </Link>
@@ -162,7 +162,7 @@ export function VivaAttempt({ id }: { id: string }) {
                 )}
                 {r?.explanation && (
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    {x.kind === 'explain' && <span className="text-foreground">Model answer: </span>}
+                    <span className="text-foreground">Model answer: </span>
                     {r.explanation}
                   </p>
                 )}
@@ -185,6 +185,12 @@ export function VivaAttempt({ id }: { id: string }) {
               ))}
             </ol>
           </section>
+        )}
+
+        {onExit && (
+          <Button variant="outline" onClick={onExit}>
+            Start another self-assessment
+          </Button>
         )}
       </div>
     );

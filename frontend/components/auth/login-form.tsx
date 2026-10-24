@@ -2,11 +2,11 @@
 
 import { ArrowRight, Droplets } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { googleSignIn, login } from '@/lib/account';
+import { finishGoogleSignIn, login, startGoogleSignIn } from '@/lib/account';
 import { useSession } from '@/components/app/session-provider';
 
 export function LoginForm() {
@@ -16,6 +16,20 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Back from Google's redirect, this finishes the sign-in. On a normal visit it does nothing.
+  useEffect(() => {
+    finishGoogleSignIn()
+      .then((res) => {
+        if (!res) return;
+        signIn(res.token, res.user);
+        router.replace('/dashboard');
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Google sign-in failed. Try again.');
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,22 +45,14 @@ export function LoginForm() {
     }
   };
 
+  // Leaves this page for Google. The session is set when the page loads again (see the effect above).
   const google = async () => {
     setBusy(true);
     setError('');
     try {
-      const res = await googleSignIn();
-      signIn(res.token, res.user);
-      router.replace('/dashboard');
+      await startGoogleSignIn();
     } catch (err) {
-      const code = (err as { code?: string }).code;
-      setError(
-        code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
-          ? 'Google sign-in was cancelled.'
-          : err instanceof Error
-            ? err.message
-            : 'Google sign-in failed. Try again.',
-      );
+      setError(err instanceof Error ? err.message : 'Google sign-in failed. Try again.');
       setBusy(false);
     }
   };

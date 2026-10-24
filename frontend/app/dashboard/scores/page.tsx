@@ -22,7 +22,7 @@ export default function ScoresPage() {
         <div className="space-y-1">
           <p className="text-sm font-medium">Viva results are in the Viva section</p>
           <p className="text-xs text-muted-foreground">
-            Open Viva in the sidebar to start a self-assessment and see your results.
+            Start a self-assessment on an experiment page. Finished ones are listed under Viva.
           </p>
         </div>
       </div>

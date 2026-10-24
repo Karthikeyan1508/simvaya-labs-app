@@ -112,6 +112,28 @@ export const listMyVivas = () => request<MyViva[]>('/me/vivas');
 export const startSelfAssessment = (experimentId: string) =>
   request<NewSelfAssessment>('/me/vivas/self-assessments', 'POST', { experimentId });
 export const getMyViva = (id: number) => request<MyVivaDetail>(`/me/vivas/${id}`);
+
+// Finished attempts only, for the dashboard and the viva list. Max marks come from each viva's detail.
+export interface SubmittedViva {
+  id: number;
+  title: string;
+  experimentId: string;
+  createdAt: string;
+  score: number | null;
+  maxScore: number;
+}
+export async function listSubmittedVivas(): Promise<SubmittedViva[]> {
+  const done = (await listMyVivas()).filter((v) => v.myAttempt?.status === 'submitted');
+  const details = await Promise.all(done.map((v) => getMyViva(v.id)));
+  return done.map((v, i) => ({
+    id: v.id,
+    title: v.title,
+    experimentId: v.experimentId,
+    createdAt: v.createdAt,
+    score: v.myAttempt?.score ?? null,
+    maxScore: details[i].viva.maxScore,
+  }));
+}
 export const startViva = (id: number) =>
   request<{ attemptId: number; status: string; startedAt: string }>(`/me/vivas/${id}/start`, 'POST');
 export const saveAnswer = (id: number, questionId: number, answer: AnswerPayload) =>

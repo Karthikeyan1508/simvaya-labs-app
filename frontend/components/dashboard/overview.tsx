@@ -6,7 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { useSession } from '@/components/app/session-provider';
 import { PageHeader, Block } from '@/components/app/page-header';
 import { fetchAcademics, fetchSummary, type Academics, type SemesterOverview, type Summary } from '@/lib/account';
+import { errorMessage, listSubmittedVivas, type SubmittedViva } from '@/lib/viva';
 import { cn } from '@/lib/utils';
+import { SubmittedVivaList } from '@/components/viva/submitted-viva-list';
 import { SubjectCard } from './subject-card';
 
 const greeting = () => {
@@ -25,6 +27,7 @@ export function Overview() {
   const [academics, setAcademics] = useState<Academics | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  const [vivas, setVivas] = useState<SubmittedViva[] | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -35,6 +38,9 @@ export function Overview() {
         setSelected(a.activeSemester);
       })
       .catch((e: Error) => setError(e.message));
+    listSubmittedVivas()
+      .then(setVivas)
+      .catch((e: unknown) => setError(errorMessage(e)));
   }, []);
 
   const shown = academics?.semesters.find((s) => s.number === selected) ?? null;
@@ -72,6 +78,13 @@ export function Overview() {
         <Stat icon={Activity} label="This week" value={summary?.activitiesThisWeek} hint="Activities in the last 7 days" />
         <Stat icon={Award} label="Viva score" value={null} hint="Not available yet" badge="Coming soon" />
       </div>
+
+      <Block title="Viva results" meta={vivas ? `${vivas.length} finished` : undefined}>
+        {vivas?.length === 0 && (
+          <p className="glass rounded-lg p-6 text-sm text-muted-foreground">No finished vivas yet.</p>
+        )}
+        {vivas && vivas.length > 0 && <SubmittedVivaList vivas={vivas} />}
+      </Block>
 
       <Block title="Semesters" meta={`8 semesters · ${academics ? academics.semesters.filter((s) => s.status === 'completed').length : 0} completed`}>
         <div className="grid grid-cols-4 gap-2 md:grid-cols-8">

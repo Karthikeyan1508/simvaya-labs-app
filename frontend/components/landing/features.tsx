@@ -33,7 +33,7 @@ export function Features() {
           </h2>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-6">
           {FEATURES.map((f) => (
             <article
               key={f.title}

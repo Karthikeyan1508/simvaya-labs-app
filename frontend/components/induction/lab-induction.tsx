@@ -24,6 +24,7 @@ import { TheorySection } from './sections-theory';
 import { VivaSection } from './viva-section';
 
 const NO_PARTS: ComponentId[] = [];
+const TICKS_KEY = 'simvaya.induction.safetyTicks';
 
 const OBJECTIVES = [
   'Measure line voltage, line current, input power and speed at no load and at several loads.',
@@ -38,7 +39,21 @@ export function LabInduction() {
   const [section, setSection] = useState<EeeSectionId>('aim');
   const [visited, setVisited] = useState<EeeSectionId[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [ticks, setTicks] = useState<boolean[]>([]);
+  // The safety ticks are kept for this tab, so a reload does not lock the rig again.
+  const [ticks, setTicks] = useState<boolean[]>(() => {
+    try {
+      return JSON.parse(window.sessionStorage.getItem(TICKS_KEY) ?? '[]') as boolean[];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(TICKS_KEY, JSON.stringify(ticks));
+    } catch {
+      /* storage blocked: the ticks last until reload */
+    }
+  }, [ticks]);
   const [view, setViewMode] = useState<ViewMode>('scene');
   const [circuitSeen, setCircuitSeen] = useState(false);
   const [cutaway, setCutaway] = useState(false);

@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, getRedirectResult, signInWithRedirect } from 'firebase/auth';
+import { GoogleAuthProvider, getRedirectResult, signInWithPopup, signInWithRedirect, type User as FirebaseUser } from 'firebase/auth';
 import type { ObservationRow as InductionObservationRow } from '@/lib/induction';
 import type { ObservationRow } from '@/lib/types';
 import { firebaseAuth } from '@/lib/firebase';
@@ -127,19 +127,39 @@ export const login = (email: string, password: string) =>
   post<{ token: string; user: User }>('/auth/login', { email, password }, false);
 
 // Google sign-in uses a full-page redirect. A popup opened after an await is blocked by browsers.
-export const startGoogleSignIn = () => {
+const googleProvider = () => {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  return signInWithRedirect(firebaseAuth(), provider);
+  return provider;
 };
 
-// Call on the login page load. Returns null when this visit did not come back from Google.
-// The backend checks the ID token and returns the same session token as password login.
+// The backend checks the Firebase ID token and returns the same session token as password login.
+const exchangeFirebaseUser = async (user: FirebaseUser) => {
+  const idToken = await user.getIdToken();
+  return post<{ token: string; user: User }>('/auth/firebase', { idToken }, false);
+};
+
+// Google sign-in in a popup. Where the browser blocks popups, it falls back to a full-page redirect,
+// and the login page finishes that redirect with finishGoogleSignIn. Returns null after a redirect.
+export const startGoogleSignIn = async () => {
+  try {
+    const cred = await signInWithPopup(firebaseAuth(), googleProvider());
+    return await exchangeFirebaseUser(cred.user);
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+      await signInWithRedirect(firebaseAuth(), googleProvider());
+      return null;
+    }
+    throw err;
+  }
+};
+
+// Call on the login page load. Returns null when this visit did not come back from a Google redirect.
 export const finishGoogleSignIn = async () => {
   const result = await getRedirectResult(firebaseAuth());
   if (!result) return null;
-  const idToken = await result.user.getIdToken();
-  return post<{ token: string; user: User }>('/auth/firebase', { idToken }, false);
+  return exchangeFirebaseUser(result.user);
 };
 export const logout = () => post<{ ok: true }>('/auth/logout');
 export const fetchMe = () => call<User>('/auth/me');

@@ -50,9 +50,19 @@ export function LoginForm() {
     setBusy(true);
     setError('');
     try {
-      await startGoogleSignIn();
+      const res = await startGoogleSignIn();
+      if (!res) return; // redirected to Google; the effect above finishes the sign-in on return
+      signIn(res.token, res.user);
+      router.replace('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google sign-in failed. Try again.');
+      const code = (err as { code?: string }).code;
+      setError(
+        code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+          ? 'Google sign-in was cancelled.'
+          : err instanceof Error
+            ? err.message
+            : 'Google sign-in failed. Try again.',
+      );
       setBusy(false);
     }
   };

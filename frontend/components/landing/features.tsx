@@ -37,7 +37,7 @@ export function Features() {
           {FEATURES.map((f) => (
             <article
               key={f.title}
-              className="landing-reveal surface-gradient flex min-h-72 flex-col justify-between rounded-lg border border-border/60 p-8"
+              className="surface-gradient flex min-h-72 flex-col justify-between rounded-lg border border-border/60 p-8"
             >
               <div className="space-y-3">
                 <h3 className="text-2xl leading-tight font-semibold tracking-tight">{f.title}</h3>

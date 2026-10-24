@@ -233,7 +233,7 @@ export function EngineHero({ primaryHref, primaryLabel }: { primaryHref: string;
                 ref={(n) => {
                   chapter.current[1] = n;
                 }}
-                className="landing-chapter pointer-events-none [grid-area:1/1] space-y-6"
+                className="landing-chapter pointer-events-none [grid-area:1/1] space-y-6 opacity-0"
               >
                 <p className="text-sm font-medium tracking-wide text-primary">Look inside</p>
                 <h2 className="text-[clamp(2.4rem,4.2vw,4.2rem)] leading-[0.95] font-semibold tracking-[-0.04em]">
@@ -249,7 +249,7 @@ export function EngineHero({ primaryHref, primaryLabel }: { primaryHref: string;
                 ref={(n) => {
                   chapter.current[2] = n;
                 }}
-                className="landing-chapter pointer-events-none [grid-area:1/1] space-y-6"
+                className="landing-chapter pointer-events-none [grid-area:1/1] space-y-6 opacity-0"
               >
                 <p className="text-sm font-medium tracking-wide text-primary">Measure</p>
                 <h2 className="text-[clamp(2.4rem,4.2vw,4.2rem)] leading-[0.95] font-semibold tracking-[-0.04em]">

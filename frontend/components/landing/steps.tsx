@@ -76,7 +76,7 @@ export function Steps() {
           </svg>
 
           {STEPS.map((s) => (
-            <li key={s.n} className="landing-reveal">
+            <li key={s.n}>
               <span className="num block text-sm text-primary">{s.n}</span>
               <h3 className="mt-2 text-3xl leading-tight font-semibold tracking-tight md:text-4xl">{s.title}</h3>
               <p className="mt-3 max-w-lg text-[17px] leading-relaxed text-muted-foreground">{s.body}</p>

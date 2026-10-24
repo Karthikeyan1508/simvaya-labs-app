@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { fetchSignedUrl } from '@/lib/voice-api';
 import { buildVoicePrompt, VOICE_FIRST_MESSAGE } from '@/lib/voice-prompt';
 import { buildVoiceTools, type LabBridge, type VoiceTools } from '@/lib/voice-tools';
+import { partsMentioned } from '@/lib/voice-parts';
 
 type Line = { id: number; role: 'user' | 'agent'; text: string };
 type State = 'connecting' | 'listening' | 'speaking' | 'error' | 'ended';
@@ -74,6 +75,11 @@ function AssistantPanel({ lab }: { lab: LabBridge }) {
     onMessage: ({ message: text, role }) => {
       const id = ++lineId.current;
       setLines((prev) => [...prev.slice(-5), { id, role, text }]);
+      // What the assistant names is lit on the rig, even when the model does not call the highlight tool.
+      if (role === 'agent') {
+        const ids = partsMentioned(latest.current.exp, text);
+        if (ids.length) latest.current.setVoiceHighlight(ids);
+      }
     },
   });
 
@@ -127,6 +133,7 @@ function AssistantPanel({ lab }: { lab: LabBridge }) {
     attempt.current++;
     setFetching(false);
     endSession();
+    latest.current.setVoiceHighlight(null);
     setOpen(false);
   };
 

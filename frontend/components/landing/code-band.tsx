@@ -31,7 +31,7 @@ export function CodeBand() {
             {LINES.map((l) => (
               <span
                 key={l.text}
-                className={`landing-reveal block whitespace-pre ${
+                className={`block whitespace-pre ${
                   l.tone === 'muted'
                     ? 'text-muted-foreground'
                     : l.tone === 'accent'

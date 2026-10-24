@@ -2,7 +2,8 @@
 // The SDK defaults to app.agenticorg.ai, so the hackathon host must be set explicitly.
 
 const DEFAULT_BASE_URL = 'https://agenticorg.hackathon.pinelabs.com';
-const RUN_TIMEOUT_MS = 120_000;
+// Short on purpose: a student waits for a self-assessment, so a slow run falls back to Groq or templates.
+const RUN_TIMEOUT_MS = 45_000;
 
 export type RunStatus = 'completed' | 'failed' | 'hitl_triggered' | 'budget_exceeded';
 

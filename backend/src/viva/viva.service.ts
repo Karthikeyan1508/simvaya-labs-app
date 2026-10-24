@@ -1,49 +1,28 @@
-import { BadRequestException, ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import {
   answerRows,
-  attemptById,
   attemptFor,
-  attemptsForViva,
-  deleteViva,
   finishAttempt,
   inTransaction,
   insertAttempt,
+  insertQuestions,
   insertViva,
   questionRows,
-  replaceQuestions,
-  setAnswerScore,
-  setAttemptScore,
   setTranscript,
-  setVivaStatus,
-  updateTitle,
   upsertAnswer,
   vivaRow,
-  vivaSummary,
-  vivasByTeacher,
-  vivasPublished,
+  vivasOwnedBy,
   writeGrade,
   type AnswerRow,
-  type AttemptRow,
   type VivaRow,
   type VivaSummaryRow,
 } from '../db/viva-repo';
-import { generateWithGroq } from './groq-generator';
-import { agenticOrgConfig, runAgent } from '../agenticorg/agenticorg';
-import { parseDraft } from './draft';
+import { generateSelfAssessment, markExplain, type ExplainResult } from './self-assessment';
 import { attemptTotals, gradeAnswer, maxScore, parseAnswer, resultFor, type Graded } from './grading';
-import { templateQuestions, type Counts } from './question-bank';
 import { toStudentQuestion } from './student-view';
-import {
-  VIVA_KINDS,
-  type DraftQuestion,
-  type Question,
-  type StoredAnswer,
-  type VivaKind,
-  type VivaStatus,
-} from './types';
-import type { AnswerDto, CreateVivaDto, GradeDto, ProposalDto, SpokenAnswerDto } from './viva.dto';
+import { type DraftQuestion, type Question, type StoredAnswer } from './types';
+import type { AnswerDto, SpokenAnswerDto } from './viva.dto';
 
-const log = new Logger('Viva');
 const now = () => new Date().toISOString();
 
 export function summaryOf(r: VivaSummaryRow) {
@@ -60,18 +39,10 @@ export function summaryOf(r: VivaSummaryRow) {
   };
 }
 
-const summaryById = async (id: number) => summaryOf((await vivaSummary(id))!);
-
-async function ownedViva(id: number, teacherId: string): Promise<VivaRow> {
+// A student reaches only the self-assessments they own.
+async function ownViva(id: number, userId: string): Promise<VivaRow> {
   const v = await vivaRow(id);
-  if (!v || v.teacher_id !== teacherId) throw new NotFoundException('Viva not found');
-  return v;
-}
-
-// Students see published vivas. Closed ones stay open to finish an attempt already started.
-async function openViva(id: number): Promise<VivaRow> {
-  const v = await vivaRow(id);
-  if (!v || v.status === 'draft') throw new NotFoundException('Viva not found');
+  if (!v || v.owner_id !== userId) throw new NotFoundException('Viva not found');
   return v;
 }
 
@@ -85,7 +56,7 @@ const gradedOf = (rows: AnswerRow[]) =>
   new Map(
     rows.map((r): [number, Graded] => [
       r.question_id,
-      { correct: r.correct === null ? null : r.correct === 1, score: r.score },
+      { correct: r.correct === null ? null : r.correct === 1, score: r.score, feedback: r.feedback },
     ]),
   );
 
@@ -112,254 +83,29 @@ const SPOKEN_FIELD = {
   graph: 'value',
 } as const;
 
-// Checks each question. A numeric id is kept so an edit can keep the question's identity.
-function parseQuestions(raw: unknown[]): DraftQuestion[] {
-  return raw.map((item, i) => {
-    const q = parseDraft(item);
-    if (typeof q === 'string') throw new BadRequestException(`Question ${i + 1}: ${q}`);
-    const id = (item as { id?: unknown }).id;
-    return Number.isInteger(id) ? { ...q, id: id as number } : q;
-  });
-}
-
-function cleanTitle(title: string): string {
-  const t = title.trim();
-  if (!t) throw new BadRequestException('Title is required');
-  return t;
-}
-
-function checkCounts(raw: Record<string, unknown>): Counts {
-  const counts: Counts = {};
-  let total = 0;
-  for (const [kind, n] of Object.entries(raw)) {
-    if (!(VIVA_KINDS as readonly string[]).includes(kind)) throw new BadRequestException(`Unknown question kind: ${kind}`);
-    if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > 20) {
-      throw new BadRequestException(`Count for ${kind} must be a whole number from 0 to 20`);
-    }
-    counts[kind as VivaKind] = n;
-    total += n;
-  }
-  if (total === 0) throw new BadRequestException('Ask for at least one question');
-  if (total > 60) throw new BadRequestException('At most 60 questions per proposal');
-  return counts;
-}
-
-function draftTask(counts: Counts, instructions?: string): string {
-  const asked = Object.entries(counts)
-    .map(([kind, n]) => `${n} ${kind}`)
-    .join(', ');
-  return [
-    'Write viva questions for a virtual engineering lab as JSON only: {"questions":[...]}.',
-    `Each question has kind (one of ${VIVA_KINDS.join(', ')}), prompt, points (a whole number) and the fields its kind needs.`,
-    `Ask for: ${asked}.`,
-    instructions ? `Teacher's instructions: ${instructions}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-// The agent's output may be an object with questions, or the same JSON as text.
-function questionsFromOutput(output: unknown): unknown[] {
-  if (typeof output === 'string') return questionsFromOutput(tryJson(output));
-  if (output && typeof output === 'object') {
-    const o = output as { questions?: unknown; text?: unknown };
-    if (Array.isArray(o.questions)) return o.questions;
-    if (typeof o.text === 'string') return questionsFromOutput(tryJson(o.text));
-  }
-  return [];
-}
-
-const tryJson = (s: string): unknown => {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-};
-
-// Proposals from an AgenticOrg agent. They are drafts only: the teacher edits and publishes them.
-async function agenticOrgProposal(
-  counts: Counts,
-  instructions: string | undefined,
-  templates: (note?: string) => { source: 'template'; note?: string; questions: DraftQuestion[] },
-) {
-  const cfg = agenticOrgConfig();
-  const agentId = process.env.AGENTICORG_VIVA_AGENT_ID;
-  if (!cfg || !agentId) {
-    return templates('AgenticOrg is not set up (AGENTICORG_API_KEY and AGENTICORG_VIVA_AGENT_ID), so templates were used.');
-  }
-  try {
-    const run = await runAgent(cfg, agentId, { task: draftTask(counts, instructions) });
-    // hitl_triggered: AgenticOrg held the run (shadow agents always do). The output is still a draft for the teacher.
-    if (run.status !== 'completed' && run.status !== 'hitl_triggered') {
-      return templates(`The AgenticOrg run ended with status ${run.status}, so templates were used.`);
-    }
-    const parsed = questionsFromOutput(run.output).map((item) => parseDraft(item));
-    const questions = parsed.filter((q): q is DraftQuestion => typeof q !== 'string');
-    if (questions.length === 0) return templates('AgenticOrg returned no valid questions, so templates were used.');
-    const dropped = parsed.length - questions.length;
-    const notes = [
-      run.status === 'hitl_triggered' ? 'AgenticOrg held this run for approval. Check the drafts before publishing.' : '',
-      dropped > 0 ? `${dropped} invalid question(s) were dropped.` : '',
-    ].filter(Boolean);
-    return {
-      source: 'agenticorg' as const,
-      note: notes.length ? notes.join(' ') : undefined,
-      questions,
-    };
-  } catch (err) {
-    const why = err instanceof Error ? err.message : 'unknown error';
-    log.warn(`AgenticOrg proposal failed: ${why}`);
-    return templates(`AgenticOrg could not produce questions (${why}), so templates were used.`);
-  }
-}
-
-// Teacher proposals. AI mode falls back to templates on any problem and says why in `note`.
-export async function proposeQuestions(dto: ProposalDto) {
-  const counts = checkCounts(dto.counts);
-  const seed = Math.floor(Math.random() * 2 ** 31);
-  const templates = (note?: string) => ({
-    source: 'template' as const,
-    note,
-    questions: templateQuestions(counts, seed),
-  });
-  if (dto.mode === 'agenticorg') return agenticOrgProposal(counts, dto.instructions, templates);
-  if (dto.mode !== 'ai') return templates();
-
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return templates('GROQ_API_KEY is not set, so templates were used.');
-  try {
-    const { questions, dropped } = await generateWithGroq({
-      apiKey,
-      model: process.env.GROQ_MODEL,
-      counts,
-      instructions: dto.instructions,
-    });
-    if (questions.length > 0) {
-      const want = Object.values(counts).reduce((s, n) => s + (n ?? 0), 0);
-      const notes = [
-        dropped > 0 ? `${dropped} invalid question(s) were dropped.` : '',
-        questions.length < want ? `Groq gave ${questions.length} of ${want} requested questions.` : '',
-      ].filter(Boolean);
-      return {
-        source: 'ai' as const,
-        note: notes.length ? notes.join(' ') : undefined,
-        questions,
-      };
-    }
-    return templates('Groq returned no valid questions, so templates were used.');
-  } catch (err) {
-    const why = err instanceof Error ? err.message : 'unknown error';
-    log.warn(`AI proposal failed: ${why}`);
-    return templates(`Groq could not generate questions (${why}), so templates were used.`);
-  }
-}
-
-export async function createViva(dto: CreateVivaDto, teacherId: string) {
-  const questions = parseQuestions(dto.questions);
-  if (dto.publish && questions.length === 0) {
-    throw new BadRequestException('Add at least one question before publishing');
-  }
+// The student's own self-assessment: questions generated (AgenticOrg, then Groq, then templates) and saved as a
+// published viva that only this student can open.
+export async function createSelfAssessment(experimentId: string, userId: string) {
+  const gen = await generateSelfAssessment();
   const t = now();
   const id = await inTransaction(async () => {
     const vivaId = await insertViva(
-      teacherId,
-      cleanTitle(dto.title),
-      dto.experimentId,
-      dto.publish ? 'published' : 'draft',
-      dto.publish ? t : null,
+      userId,
+      `Self-assessment, ${t.slice(0, 16).replace('T', ' ')} UTC`,
+      experimentId,
+      'published',
+      t,
       t,
     );
-    await replaceQuestions(vivaId, questions);
+    await insertQuestions(vivaId, gen.questions);
     return vivaId;
   });
-  return summaryById(id);
+  return { id, source: gen.source, note: gen.note };
 }
 
-export async function listTeacherVivas(teacherId: string) {
-  return (await vivasByTeacher(teacherId)).map(summaryOf);
-}
-
-export async function teacherViva(id: number, teacherId: string) {
-  const v = await ownedViva(id, teacherId);
-  const questions = await questionsOf(v.id);
-  const attempts = await attemptsForViva(v.id);
-  return {
-    viva: await summaryById(v.id),
-    questions,
-    attempts: await Promise.all(attempts.map((a) => attemptView(a, questions))),
-  };
-}
-
-async function attemptView(a: AttemptRow, questions: Question[]) {
-  return {
-    id: a.id,
-    studentName: a.student_name ?? '',
-    studentEmail: a.student_email ?? '',
-    status: a.status,
-    startedAt: a.started_at,
-    submittedAt: a.submitted_at,
-    score: a.score,
-    maxScore: maxScore(questions),
-    pendingReview: a.pending_review === 1,
-    transcript: parsedTranscript(a.transcript),
-    answers: (await answerRows(a.id)).map((r) => ({
-      questionId: r.question_id,
-      answer: parsedAnswer(r.answer),
-      correct: r.correct === null ? null : r.correct === 1,
-      score: r.score,
-    })),
-  };
-}
-
-export async function updateViva(id: number, dto: { title?: string; questions?: unknown[] }, teacherId: string) {
-  const v = await ownedViva(id, teacherId);
-  if (v.status !== 'draft') throw new ConflictException('Only draft vivas can be edited');
-  const questions = dto.questions ? parseQuestions(dto.questions) : undefined;
-  const title = dto.title === undefined ? undefined : cleanTitle(dto.title);
-  await inTransaction(async () => {
-    if (title !== undefined) await updateTitle(v.id, title);
-    if (questions) await replaceQuestions(v.id, questions);
-  });
-  return summaryById(v.id);
-}
-
-export async function changeStatus(id: number, status: VivaStatus, teacherId: string) {
-  await ownedViva(id, teacherId);
-  if (status === 'published' && (await questionRows(id)).length === 0) {
-    throw new BadRequestException('Add at least one question before publishing');
-  }
-  await setVivaStatus(id, status, status === 'published' ? now() : null);
-  return summaryById(id);
-}
-
-export async function removeViva(id: number, teacherId: string) {
-  await ownedViva(id, teacherId);
-  await deleteViva(id);
-  return { ok: true };
-}
-
-export async function gradeAttempt(vivaId: number, attemptId: number, dto: GradeDto, teacherId: string) {
-  const v = await ownedViva(vivaId, teacherId);
-  const a = await attemptById(attemptId);
-  if (!a || a.viva_id !== v.id) throw new NotFoundException('Attempt not found');
-  if (a.status !== 'submitted') throw new ConflictException('Only submitted attempts can be graded');
-  const questions = await questionsOf(v.id);
-  const q = questions.find((x) => x.id === dto.questionId);
-  if (!q) throw new NotFoundException('Question not found');
-  if (dto.score < 0 || dto.score > q.points) throw new BadRequestException(`Score must be between 0 and ${q.points}`);
-
-  await inTransaction(async () => {
-    await setAnswerScore(a.id, q.id, dto.score);
-    const totals = attemptTotals(questions, gradedOf(await answerRows(a.id)));
-    await setAttemptScore(a.id, totals.score, totals.pendingReview);
-  });
-  return { ok: true };
-}
-
-export async function listOpenVivas(userId: string) {
+export async function listMyVivas(userId: string) {
   return Promise.all(
-    (await vivasPublished()).map(async (r) => {
+    (await vivasOwnedBy(userId)).map(async (r) => {
       const a = await attemptFor(r.id, userId);
       return {
         ...summaryOf(r),
@@ -370,10 +116,9 @@ export async function listOpenVivas(userId: string) {
 }
 
 export async function startAttempt(vivaId: number, userId: string) {
-  const v = await openViva(vivaId);
+  const v = await ownViva(vivaId, userId);
   let a = await attemptFor(v.id, userId);
   if (!a) {
-    if (v.status !== 'published') throw new NotFoundException('Viva is not open');
     await insertAttempt(v.id, userId, now());
     a = (await attemptFor(v.id, userId))!;
   }
@@ -381,9 +126,8 @@ export async function startAttempt(vivaId: number, userId: string) {
 }
 
 export async function studentViva(vivaId: number, userId: string) {
-  const v = await openViva(vivaId);
+  const v = await ownViva(vivaId, userId);
   const a = await attemptFor(v.id, userId);
-  if (!a && v.status !== 'published') throw new NotFoundException('Viva is not open');
   const questions = await questionsOf(v.id);
   const rows = a ? await answerRows(a.id) : [];
   const graded = gradedOf(rows);
@@ -405,7 +149,7 @@ export async function studentViva(vivaId: number, userId: string) {
 }
 
 export async function saveAnswer(vivaId: number, dto: AnswerDto, userId: string) {
-  const v = await openViva(vivaId);
+  const v = await ownViva(vivaId, userId);
   const a = await attemptFor(v.id, userId);
   if (!a) throw new ConflictException('Start the viva before answering');
   if (a.status !== 'in_progress') throw new ConflictException('This attempt is already submitted');
@@ -417,19 +161,42 @@ export async function saveAnswer(vivaId: number, dto: AnswerDto, userId: string)
   return { ok: true };
 }
 
+// Marks each explain answer with Groq, against its model answer. A question Groq does not mark is left out,
+// so it stays pending review.
+async function markExplainAnswers(questions: Question[], saved: Map<number, AnswerRow>): Promise<Map<number, ExplainResult>> {
+  const marks = new Map<number, ExplainResult>();
+  await Promise.all(
+    questions
+      .filter((q) => q.kind === 'explain')
+      .map(async (q) => {
+        const stored = parsedAnswer(saved.get(q.id)?.answer ?? null);
+        const mark = await markExplain(q, stored && 'text' in stored ? stored.text : '');
+        if (mark) marks.set(q.id, mark);
+      }),
+  );
+  return marks;
+}
+
 export async function submitAttempt(vivaId: number, userId: string) {
-  const v = await openViva(vivaId);
+  const v = await ownViva(vivaId, userId);
   const a = await attemptFor(v.id, userId);
   if (!a) throw new ConflictException('Start the viva before submitting');
   if (a.status === 'submitted') throw new ConflictException('This attempt is already submitted');
   const questions = await questionsOf(v.id);
+  const saved = new Map((await answerRows(a.id)).map((r) => [r.question_id, r] as const));
+  // Marking happens before the transaction, so the database is not held open during the Groq calls.
+  const marks = await markExplainAnswers(questions, saved);
 
   return inTransaction(async () => {
-    const saved = new Map((await answerRows(a.id)).map((r) => [r.question_id, r] as const));
     for (const q of questions) {
-      const row = saved.get(q.id);
-      const g = gradeAnswer(q, parsedAnswer(row?.answer ?? null));
-      await writeGrade(a.id, q.id, row?.answer ?? null, g.correct, g.score);
+      const answer = saved.get(q.id)?.answer ?? null;
+      if (q.kind === 'explain') {
+        const m = marks.get(q.id);
+        await writeGrade(a.id, q.id, answer, m?.correct ?? null, m?.score ?? null, m?.feedback ?? null);
+      } else {
+        const g = gradeAnswer(q, parsedAnswer(answer));
+        await writeGrade(a.id, q.id, answer, g.correct, g.score, null);
+      }
     }
     const graded = gradedOf(await answerRows(a.id));
     const totals = attemptTotals(questions, graded);
@@ -446,7 +213,7 @@ export async function submitAttempt(vivaId: number, userId: string) {
 // Oral interview: the examiner agent passes each spoken answer with its question number. The reply is a short
 // sentence the agent can say aloud, so a wrong answer asks the student again instead of failing the call.
 export async function saveSpokenAnswer(vivaId: number, dto: SpokenAnswerDto, userId: string) {
-  const v = await openViva(vivaId);
+  const v = await ownViva(vivaId, userId);
   const a = await attemptFor(v.id, userId);
   if (!a) return { ok: false, message: 'The viva has not started yet.' };
   if (a.status !== 'in_progress') return { ok: false, message: 'The viva is already submitted.' };
@@ -460,11 +227,12 @@ export async function saveSpokenAnswer(vivaId: number, dto: SpokenAnswerDto, use
   return { ok: true, message: `Saved the answer to question ${dto.questionNumber}.` };
 }
 
-// The whole conversation, kept with the attempt for the teacher to read next to the marks.
+// The whole conversation, kept with the attempt so the student can read it with the results.
 export async function saveTranscript(vivaId: number, lines: unknown[], userId: string) {
-  const v = await openViva(vivaId);
+  const v = await ownViva(vivaId, userId);
   const a = await attemptFor(v.id, userId);
   if (!a) throw new ConflictException('Start the viva before saving the interview');
+  if (a.status !== 'in_progress') throw new ConflictException('This attempt is already submitted');
   const clean: TranscriptLine[] = [];
   for (const item of lines) {
     const l = item as { role?: unknown; text?: unknown; at?: unknown };

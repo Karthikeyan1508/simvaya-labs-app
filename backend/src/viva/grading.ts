@@ -8,13 +8,14 @@ const DEFAULT_TOLERANCE = 0.05;
 export interface Graded {
   correct: boolean | null;
   score: number | null;
+  feedback?: string | null; // from the marker, for explain answers
 }
 
 export interface Result extends Graded {
   questionId: number;
   points: number;
   expected?: string;
-  explanation?: string;
+  explanation?: string; // the model answer
 }
 
 const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -32,7 +33,7 @@ export function withinTolerance(value: number, expected: number, tolerance = DEF
   return Math.abs(value - expected) <= tolerance * Math.abs(expected);
 }
 
-// Null for explain, which the teacher grades.
+// Null for explain, which the marker grades.
 export function isCorrect(q: Question, a: StoredAnswer): boolean | null {
   switch (q.kind) {
     case 'explain':
@@ -52,7 +53,7 @@ export function isCorrect(q: Question, a: StoredAnswer): boolean | null {
   }
 }
 
-// An unanswered auto-graded question counts as wrong. Explain stays null until the teacher scores it.
+// An unanswered auto-graded question counts as wrong. Explain stays null until it is marked.
 export function gradeAnswer(q: Question, answer: StoredAnswer | null): Graded {
   if (q.kind === 'explain') return { correct: null, score: null };
   const correct = answer !== null && isCorrect(q, answer) === true;
@@ -132,6 +133,7 @@ export function resultFor(q: Question, g: Graded | undefined): Result {
     questionId: q.id,
     correct: g?.correct ?? null,
     score: g?.score ?? null,
+    feedback: g?.feedback ?? null,
     points: q.points,
     expected: expectedText(q),
     explanation: q.explanation,

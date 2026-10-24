@@ -3,7 +3,7 @@ export type VivaKind = (typeof VIVA_KINDS)[number];
 export type VivaStatus = 'draft' | 'published' | 'closed';
 export const EXPERIMENT_IDS = ['pelton-wheel'] as const;
 
-// Teacher view. Holds the answer key.
+// Holds the answer key. Only the server reads it; students get StudentQuestion.
 export interface DraftQuestion {
   id?: number;
   kind: VivaKind;

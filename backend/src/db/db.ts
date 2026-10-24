@@ -116,11 +116,12 @@ CREATE INDEX IF NOT EXISTS idx_vivas_teacher ON vivas(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_viva_questions_viva ON viva_questions(viva_id, position);
 `;
 
-// Creates the tables and seeds the demo student and the teacher. Called once before the server listens.
+// Creates the tables and seeds the demo student. Called once before the server listens.
 export async function initDatabase(): Promise<void> {
   await pool.query(SCHEMA);
-  // Oral vivas keep the interview transcript on the attempt. Added after the first release.
+  // The oral interview keeps its transcript on the attempt, and each answer keeps the AI's feedback.
   await pool.query('ALTER TABLE viva_attempts ADD COLUMN IF NOT EXISTS transcript TEXT');
+  await pool.query('ALTER TABLE viva_answers ADD COLUMN IF NOT EXISTS feedback TEXT');
 
   // Demo student for trying the app locally. Off unless SEED_DEMO_ACCOUNTS=true, so a public deploy has no known login.
   if (process.env.SEED_DEMO_ACCOUNTS === 'true') {
@@ -141,32 +142,4 @@ export async function initDatabase(): Promise<void> {
       ],
     );
   }
-
-  // Teacher account for the viva module. Made only when TEACHER_PASSWORD is set. There is no default password.
-  const teacherPassword = process.env.TEACHER_PASSWORD;
-  if (!teacherPassword) {
-    console.warn('TEACHER_PASSWORD is not set, so no teacher account was created.');
-    return;
-  }
-  const teacherEmail = (process.env.TEACHER_EMAIL ?? 'teacher@simvaya.lab').toLowerCase();
-  if (await one(`SELECT 1 FROM users WHERE role = 'teacher' LIMIT 1`)) return;
-  if (await one('SELECT 1 FROM users WHERE email = $1', [teacherEmail])) {
-    console.warn(`TEACHER_EMAIL ${teacherEmail} already belongs to a user, so no teacher was seeded.`);
-    return;
-  }
-  await pool.query(
-    `INSERT INTO users (id, email, password_hash, name, roll_no, college, branch, semester, created_at, role)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'teacher')`,
-    [
-      randomUUID(),
-      teacherEmail,
-      hashPassword(teacherPassword),
-      'Lab Teacher',
-      '',
-      'Demo Institute of Technology',
-      'Mechanical Engineering',
-      1,
-      new Date().toISOString(),
-    ],
-  );
 }

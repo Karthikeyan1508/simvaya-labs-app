@@ -1,15 +1,30 @@
 import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard, type AuthedRequest } from '../auth/auth.guard';
-import { listOpenVivas, saveAnswer, saveSpokenAnswer, saveTranscript, startAttempt, studentViva, submitAttempt } from './viva.service';
-import { AnswerDto, SpokenAnswerDto, TranscriptDto } from './viva.dto';
+import {
+  createSelfAssessment,
+  listMyVivas,
+  saveAnswer,
+  saveSpokenAnswer,
+  saveTranscript,
+  startAttempt,
+  studentViva,
+  submitAttempt,
+} from './viva.service';
+import { AnswerDto, SelfAssessmentDto, SpokenAnswerDto, TranscriptDto } from './viva.dto';
 
-// Student routes. Any signed-in user. Answer keys only appear after submit.
+// Student routes. Each student sees only the self-assessments they made. Answer keys only appear after submit.
 @Controller('me/vivas')
 @UseGuards(AuthGuard)
 export class MeVivaController {
   @Get()
   list(@Req() req: AuthedRequest) {
-    return listOpenVivas(req.user.id);
+    return listMyVivas(req.user.id);
+  }
+
+  // Generates the questions (AgenticOrg, then Groq, then templates) and saves them as a published viva the student owns.
+  @Post('self-assessments')
+  create(@Req() req: AuthedRequest, @Body() dto: SelfAssessmentDto) {
+    return createSelfAssessment(dto.experimentId, req.user.id);
   }
 
   @Post(':id/start')

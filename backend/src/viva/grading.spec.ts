@@ -61,7 +61,7 @@ describe('viva grading', () => {
     expect(isCorrect(graph, { value: 10.6 })).toBe(true);
   });
 
-  it('leaves explain for the teacher', () => {
+  it('leaves explain for the marker', () => {
     expect(gradeAnswer(q({ kind: 'explain' }), { text: 'anything' })).toEqual({ correct: null, score: null });
   });
 

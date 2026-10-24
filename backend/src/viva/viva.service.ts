@@ -19,6 +19,7 @@ import {
 } from '../db/viva-repo';
 import { generateSelfAssessment, markExplain, type ExplainResult } from './self-assessment';
 import { attemptTotals, gradeAnswer, maxScore, parseAnswer, resultFor, type Graded } from './grading';
+import { labFor, type LabViva } from './labs';
 import { toStudentQuestion } from './student-view';
 import { type DraftQuestion, type Question, type StoredAnswer } from './types';
 import type { AnswerDto, SpokenAnswerDto } from './viva.dto';
@@ -86,7 +87,8 @@ const SPOKEN_FIELD = {
 // The student's own self-assessment: questions generated (AgenticOrg, then Groq, then templates) and saved as a
 // published viva that only this student can open.
 export async function createSelfAssessment(experimentId: string, userId: string) {
-  const gen = await generateSelfAssessment();
+  const lab = labFor(experimentId);
+  const gen = await generateSelfAssessment(lab.counts, lab);
   const t = now();
   const id = await inTransaction(async () => {
     const vivaId = await insertViva(
@@ -131,6 +133,7 @@ export async function studentViva(vivaId: number, userId: string) {
   const questions = await questionsOf(v.id);
   const rows = a ? await answerRows(a.id) : [];
   const graded = gradedOf(rows);
+  const lab = labFor(v.experiment_id);
   return {
     viva: { id: v.id, title: v.title, experimentId: v.experiment_id, status: v.status, maxScore: maxScore(questions) },
     questions: questions.map((q) => toStudentQuestion(q)),
@@ -143,7 +146,7 @@ export async function studentViva(vivaId: number, userId: string) {
             .map((r) => ({ questionId: r.question_id, answer: parsedAnswer(r.answer) })),
         }
       : null,
-    results: a?.status === 'submitted' ? questions.map((q) => resultFor(q, graded.get(q.id))) : null,
+    results: a?.status === 'submitted' ? questions.map((q) => resultFor(q, graded.get(q.id), lab.parts)) : null,
     transcript: a ? parsedTranscript(a.transcript) : [],
   };
 }
@@ -155,7 +158,7 @@ export async function saveAnswer(vivaId: number, dto: AnswerDto, userId: string)
   if (a.status !== 'in_progress') throw new ConflictException('This attempt is already submitted');
   const q = (await questionsOf(v.id)).find((x) => x.id === dto.questionId);
   if (!q) throw new NotFoundException('Question not found');
-  const stored = parseAnswer(q, dto.answer);
+  const stored = parseAnswer(q, dto.answer, labFor(v.experiment_id).parts);
   if (!stored) throw new BadRequestException('Answer does not fit this question');
   await upsertAnswer(a.id, q.id, JSON.stringify(stored));
   return { ok: true };
@@ -163,14 +166,18 @@ export async function saveAnswer(vivaId: number, dto: AnswerDto, userId: string)
 
 // Marks each explain answer with Groq, against its model answer. A question Groq does not mark is left out,
 // so it stays pending review.
-async function markExplainAnswers(questions: Question[], saved: Map<number, AnswerRow>): Promise<Map<number, ExplainResult>> {
+async function markExplainAnswers(
+  questions: Question[],
+  saved: Map<number, AnswerRow>,
+  lab: LabViva,
+): Promise<Map<number, ExplainResult>> {
   const marks = new Map<number, ExplainResult>();
   await Promise.all(
     questions
       .filter((q) => q.kind === 'explain')
       .map(async (q) => {
         const stored = parsedAnswer(saved.get(q.id)?.answer ?? null);
-        const mark = await markExplain(q, stored && 'text' in stored ? stored.text : '');
+        const mark = await markExplain(q, stored && 'text' in stored ? stored.text : '', lab);
         if (mark) marks.set(q.id, mark);
       }),
   );
@@ -183,9 +190,10 @@ export async function submitAttempt(vivaId: number, userId: string) {
   if (!a) throw new ConflictException('Start the viva before submitting');
   if (a.status === 'submitted') throw new ConflictException('This attempt is already submitted');
   const questions = await questionsOf(v.id);
+  const lab = labFor(v.experiment_id);
   const saved = new Map((await answerRows(a.id)).map((r) => [r.question_id, r] as const));
   // Marking happens before the transaction, so the database is not held open during the Groq calls.
-  const marks = await markExplainAnswers(questions, saved);
+  const marks = await markExplainAnswers(questions, saved, lab);
 
   return inTransaction(async () => {
     for (const q of questions) {
@@ -194,7 +202,7 @@ export async function submitAttempt(vivaId: number, userId: string) {
         const m = marks.get(q.id);
         await writeGrade(a.id, q.id, answer, m?.correct ?? null, m?.score ?? null, m?.feedback ?? null);
       } else {
-        const g = gradeAnswer(q, parsedAnswer(answer));
+        const g = gradeAnswer(q, parsedAnswer(answer), lab.parts);
         await writeGrade(a.id, q.id, answer, g.correct, g.score, null);
       }
     }
@@ -205,7 +213,7 @@ export async function submitAttempt(vivaId: number, userId: string) {
       score: totals.score,
       maxScore: maxScore(questions),
       pendingReview: totals.pendingReview,
-      results: questions.map((q) => resultFor(q, graded.get(q.id))),
+      results: questions.map((q) => resultFor(q, graded.get(q.id), lab.parts)),
     };
   });
 }
@@ -221,7 +229,7 @@ export async function saveSpokenAnswer(vivaId: number, dto: SpokenAnswerDto, use
   const q = questions[dto.questionNumber - 1];
   if (!q) return { ok: false, message: `There is no question ${dto.questionNumber}.` };
   const field = SPOKEN_FIELD[q.kind];
-  const stored = parseAnswer(q, { [field]: dto[field] });
+  const stored = parseAnswer(q, { [field]: dto[field] }, labFor(v.experiment_id).parts);
   if (!stored) return { ok: false, message: `That does not answer question ${dto.questionNumber}. Ask the student again.` };
   await upsertAnswer(a.id, q.id, JSON.stringify(stored));
   return { ok: true, message: `Saved the answer to question ${dto.questionNumber}.` };

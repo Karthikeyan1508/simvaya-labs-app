@@ -22,8 +22,18 @@ export const PART_ALIASES: Record<string, string[]> = {
   tacho: ['tacho', 'tachometer', 'speed meter', 'rev counter'],
 };
 
-const PART_IDS = new Set(PELTON_WHEEL.components.map((c) => c.id));
+// The parts of one lab. Ids can repeat across labs (shaft, ammeter), so each question is checked against its own lab.
+export interface PartTable {
+  labels: Record<string, string>;
+  aliases: Record<string, string[]>;
+}
 
-export const isPartId = (id: unknown): id is string => typeof id === 'string' && PART_IDS.has(id);
+export const PELTON_PARTS: PartTable = {
+  labels: Object.fromEntries(PELTON_WHEEL.components.map((c) => [c.id, c.label])),
+  aliases: PART_ALIASES,
+};
 
-export const partLabel = (id: string) => PELTON_WHEEL.components.find((c) => c.id === id)?.label ?? id;
+export const isPartId = (id: unknown, parts: PartTable = PELTON_PARTS): id is string =>
+  typeof id === 'string' && Object.prototype.hasOwnProperty.call(parts.labels, id);
+
+export const partLabel = (id: string, parts: PartTable = PELTON_PARTS) => parts.labels[id] ?? id;

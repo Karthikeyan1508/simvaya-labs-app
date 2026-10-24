@@ -1,7 +1,8 @@
 export const VIVA_KINDS = ['explain', 'mcq', 'point', 'step', 'highlight', 'calc', 'graph', 'formula'] as const;
 export type VivaKind = (typeof VIVA_KINDS)[number];
 export type VivaStatus = 'draft' | 'published' | 'closed';
-export const EXPERIMENT_IDS = ['pelton-wheel'] as const;
+export const EXPERIMENT_IDS = ['pelton-wheel', 'induction-motor', 'zener-regulator', 'sorting-visualiser'] as const;
+export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
 
 // Holds the answer key. Only the server reads it; students get StudentQuestion.
 export interface DraftQuestion {

@@ -1,12 +1,15 @@
 import { agenticOrgConfig, runAgent } from '../agenticorg/agenticorg';
 import { parseDraft } from './draft';
 import { generateWithGroq, markExplainWithGroq } from './groq-generator';
-import { templateQuestions, type Counts } from './question-bank';
+import { LABS, type LabViva } from './labs';
+import { labTemplateQuestions } from './lab-templates';
+import { type Counts } from './question-bank';
 import { VIVA_KINDS, type DraftQuestion, type Question } from './types';
 
 
 // A self-assessment asks eight questions. Explain answers are marked by Groq; the other kinds are marked by the app.
-export const SELF_ASSESSMENT_COUNTS: Counts = { explain: 2, mcq: 1, formula: 1, point: 1, highlight: 1, step: 1, calc: 1 };
+// The Pelton wheel's counts. Each lab has its own in labs.ts.
+export const SELF_ASSESSMENT_COUNTS: Counts = LABS['pelton-wheel'].counts;
 
 export type QuestionSource = 'agenticorg' | 'groq' | 'template';
 export interface GeneratedSelfAssessment {
@@ -51,7 +54,8 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : 'unknown 
 // A usable result, or the reason this source was skipped.
 type Attempt = { questions: DraftQuestion[]; note?: string } | { why: string };
 
-async function viaAgenticOrg(counts: Counts): Promise<Attempt> {
+async function viaAgenticOrg(counts: Counts, lab: LabViva): Promise<Attempt> {
+  if (!lab.agenticOrg) return { why: 'AgenticOrg is only set up for the Pelton wheel' };
   const cfg = agenticOrgConfig();
   const agentId = process.env.AGENTICORG_VIVA_AGENT_ID;
   if (!cfg || !agentId) return { why: 'AgenticOrg is not set up (AGENTIC_ORG_KEY and AGENTICORG_VIVA_AGENT_ID)' };
@@ -80,11 +84,11 @@ async function viaAgenticOrg(counts: Counts): Promise<Attempt> {
   }
 }
 
-async function viaGroq(counts: Counts): Promise<Attempt> {
+async function viaGroq(counts: Counts, lab: LabViva): Promise<Attempt> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return { why: 'GROQ_API_KEY is not set' };
   try {
-    const { questions, dropped } = await generateWithGroq({ apiKey, model: process.env.GROQ_MODEL, counts });
+    const { questions, dropped } = await generateWithGroq({ apiKey, model: process.env.GROQ_MODEL, counts, lab });
     if (questions.length === 0) return { why: 'Groq returned no valid questions' };
     const want = Object.values(counts).reduce((s, n) => s + (n ?? 0), 0);
     const notes = [
@@ -99,13 +103,16 @@ async function viaGroq(counts: Counts): Promise<Attempt> {
 }
 
 // AgenticOrg first, then Groq, then templates. Each skipped source says why in the note.
-export async function generateSelfAssessment(counts: Counts = SELF_ASSESSMENT_COUNTS): Promise<GeneratedSelfAssessment> {
+export async function generateSelfAssessment(
+  counts: Counts = SELF_ASSESSMENT_COUNTS,
+  lab: LabViva = LABS['pelton-wheel'],
+): Promise<GeneratedSelfAssessment> {
   const skipped: string[] = [];
   for (const [source, attempt] of [
     ['agenticorg', viaAgenticOrg],
     ['groq', viaGroq],
   ] as const) {
-    const out = await attempt(counts);
+    const out = await attempt(counts, lab);
     if ('why' in out) {
       skipped.push(`${out.why}.`);
       continue;
@@ -116,7 +123,7 @@ export async function generateSelfAssessment(counts: Counts = SELF_ASSESSMENT_CO
   return {
     source: 'template',
     note: [...skipped, 'Templates were used.'].join(' '),
-    questions: templateQuestions(counts, seed),
+    questions: labTemplateQuestions(lab, counts, seed),
   };
 }
 
@@ -128,7 +135,7 @@ export interface ExplainResult {
 
 // Marks one explain answer against its model answer (the question's explanation). An empty answer scores 0 without a call.
 // Null when Groq is not set up or fails, so the answer stays pending review.
-export async function markExplain(q: Question, answer: string): Promise<ExplainResult | null> {
+export async function markExplain(q: Question, answer: string, lab: LabViva = LABS['pelton-wheel']): Promise<ExplainResult | null> {
   if (!answer.trim()) return { score: 0, correct: false, feedback: 'No answer was given.' };
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
@@ -139,6 +146,7 @@ export async function markExplain(q: Question, answer: string): Promise<ExplainR
       prompt: q.prompt,
       modelAnswer: q.explanation,
       answer,
+      subject: lab.subject,
     });
     return {
       score: Math.round(mark.fraction * q.points * 100) / 100,

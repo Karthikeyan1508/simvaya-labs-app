@@ -1,4 +1,4 @@
-import { isPartId } from './part-aliases';
+import { isPartId, PELTON_PARTS, type PartTable } from './part-aliases';
 import { type DraftQuestion, VIVA_KINDS, type VivaKind } from './types';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -10,7 +10,8 @@ const clean = (v: unknown, max: number): string | undefined => {
 };
 
 // Checks one question from an AI agent or from Groq. Returns the clean question, or the reason it was refused.
-export function parseDraft(raw: unknown): DraftQuestion | string {
+// parts is the lab the question belongs to, for point and highlight.
+export function parseDraft(raw: unknown, parts: PartTable = PELTON_PARTS): DraftQuestion | string {
   if (!raw || typeof raw !== 'object') return 'Question must be an object';
   const r = raw as Record<string, unknown>;
   if (!(VIVA_KINDS as readonly unknown[]).includes(r.kind)) return 'Unknown question kind';
@@ -47,7 +48,7 @@ export function parseDraft(raw: unknown): DraftQuestion | string {
     }
     case 'point':
     case 'highlight':
-      if (!isPartId(r.partId)) return 'partId must be a real part of the rig';
+      if (!isPartId(r.partId, parts)) return 'partId must be a real part of the rig';
       q.partId = r.partId;
       break;
     case 'step': {

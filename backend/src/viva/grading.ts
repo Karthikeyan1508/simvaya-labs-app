@@ -1,4 +1,4 @@
-import { isPartId, partLabel, PART_ALIASES } from './part-aliases';
+import { isPartId, partLabel, PELTON_PARTS, type PartTable } from './part-aliases';
 import { type Question, type StoredAnswer } from './types';
 
 // Pure grading. The service layer does the storage.
@@ -20,11 +20,11 @@ export interface Result extends Graded {
 
 const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-// Correct if the normalised answer equals or contains one of the part's aliases.
-export function matchesPart(text: string, partId: string): boolean {
+// Correct if the normalised answer equals or contains one of the part's aliases. parts is the question's lab.
+export function matchesPart(text: string, partId: string, parts: PartTable = PELTON_PARTS): boolean {
   const answer = normalise(text);
   if (!answer) return false;
-  return (PART_ALIASES[partId] ?? []).some((alias) => answer.includes(normalise(alias)));
+  return (parts.aliases[partId] ?? []).some((alias) => answer.includes(normalise(alias)));
 }
 
 // Relative tolerance: 0.05 means within 5% of expected. Undefined tolerance uses 0.05.
@@ -34,7 +34,7 @@ export function withinTolerance(value: number, expected: number, tolerance = DEF
 }
 
 // Null for explain, which the marker grades.
-export function isCorrect(q: Question, a: StoredAnswer): boolean | null {
+export function isCorrect(q: Question, a: StoredAnswer, parts: PartTable = PELTON_PARTS): boolean | null {
   switch (q.kind) {
     case 'explain':
       return null;
@@ -46,7 +46,7 @@ export function isCorrect(q: Question, a: StoredAnswer): boolean | null {
     case 'step':
       return 'step' in a && a.step === q.step;
     case 'highlight':
-      return 'text' in a && !!q.partId && matchesPart(a.text, q.partId);
+      return 'text' in a && !!q.partId && matchesPart(a.text, q.partId, parts);
     case 'calc':
     case 'graph':
       return 'value' in a && withinTolerance(a.value, q.expected ?? NaN, q.tolerance);
@@ -54,14 +54,14 @@ export function isCorrect(q: Question, a: StoredAnswer): boolean | null {
 }
 
 // An unanswered auto-graded question counts as wrong. Explain stays null until it is marked.
-export function gradeAnswer(q: Question, answer: StoredAnswer | null): Graded {
+export function gradeAnswer(q: Question, answer: StoredAnswer | null, parts: PartTable = PELTON_PARTS): Graded {
   if (q.kind === 'explain') return { correct: null, score: null };
-  const correct = answer !== null && isCorrect(q, answer) === true;
+  const correct = answer !== null && isCorrect(q, answer, parts) === true;
   return { correct, score: correct ? q.points : 0 };
 }
 
 // Checks a raw answer payload for its question kind. Null means the payload does not fit.
-export function parseAnswer(q: Question, raw: unknown): StoredAnswer | null {
+export function parseAnswer(q: Question, raw: unknown, parts: PartTable = PELTON_PARTS): StoredAnswer | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   switch (q.kind) {
@@ -77,7 +77,7 @@ export function parseAnswer(q: Question, raw: unknown): StoredAnswer | null {
         : null;
     }
     case 'point':
-      return isPartId(r.partId) ? { partId: r.partId } : null;
+      return isPartId(r.partId, parts) ? { partId: r.partId } : null;
     case 'step': {
       const n = r.step;
       return typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= 9 ? { step: n } : null;
@@ -110,14 +110,14 @@ export function attemptTotals(
 }
 
 // The correct answer as text. Only sent after submit.
-export function expectedText(q: Question): string | undefined {
+export function expectedText(q: Question, parts: PartTable = PELTON_PARTS): string | undefined {
   switch (q.kind) {
     case 'mcq':
     case 'formula':
       return q.options?.[q.answer ?? -1];
     case 'point':
     case 'highlight':
-      return q.partId ? partLabel(q.partId) : undefined;
+      return q.partId ? partLabel(q.partId, parts) : undefined;
     case 'step':
       return `Step ${q.step}`;
     case 'calc':
@@ -128,14 +128,14 @@ export function expectedText(q: Question): string | undefined {
   }
 }
 
-export function resultFor(q: Question, g: Graded | undefined): Result {
+export function resultFor(q: Question, g: Graded | undefined, parts: PartTable = PELTON_PARTS): Result {
   return {
     questionId: q.id,
     correct: g?.correct ?? null,
     score: g?.score ?? null,
     feedback: g?.feedback ?? null,
     points: q.points,
-    expected: expectedText(q),
+    expected: expectedText(q, parts),
     explanation: q.explanation,
   };
 }

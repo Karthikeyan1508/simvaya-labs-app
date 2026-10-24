@@ -11,8 +11,8 @@ import { type DraftQuestion, VIVA_KINDS, type VivaKind } from './types';
 // Template generator. The same seed gives the same questions. Expected values come from calculate and sweep.
 
 export type Counts = Partial<Record<VivaKind, number>>;
-type Rand = () => number;
-type Base = Omit<DraftQuestion, 'points' | 'source'>;
+export type Rand = () => number;
+export type Base = Omit<DraftQuestion, 'points' | 'source'>;
 
 // mulberry32: a small seeded generator.
 export function seeded(seed: number): Rand {
@@ -26,7 +26,7 @@ export function seeded(seed: number): Rand {
   };
 }
 
-function shuffle<T>(rand: Rand, items: readonly T[]): T[] {
+export function shuffle<T>(rand: Rand, items: readonly T[]): T[] {
   const a = [...items];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));

@@ -91,7 +91,7 @@ export function VivaAttempt({ id }: { id: string }) {
             <h1 className="text-3xl font-semibold tracking-[-0.025em]">{viva.title}</h1>
             <p className="text-[15px] leading-relaxed text-muted-foreground">
               Oral viva: {n} questions, {viva.maxScore} marks in total. The examiner asks each question out loud and you
-              answer out loud. Your answers are recorded as a transcript for your teacher to mark.
+              answer out loud. Your answers are recorded as a transcript for review.
             </p>
             <p className="text-sm text-muted-foreground">Allow the microphone when asked. Use headphones if you can.</p>
           </div>
@@ -119,7 +119,7 @@ export function VivaAttempt({ id }: { id: string }) {
           </p>
           <p className="text-[15px] text-muted-foreground">
             {pending
-              ? 'Some answers are waiting for your teacher to mark them. Your total can change then.'
+              ? 'Some answers are waiting for review. Your total can change then.'
               : 'Every answer is marked.'}
           </p>
         </section>
@@ -155,7 +155,17 @@ export function VivaAttempt({ id }: { id: string }) {
                     <span className="text-muted-foreground">Correct answer:</span> {labels[r.expected] ?? r.expected}
                   </p>
                 )}
-                {r?.explanation && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{r.explanation}</p>}
+                {r?.feedback && (
+                  <p className="mt-2 text-sm leading-relaxed">
+                    <span className="text-muted-foreground">Feedback:</span> {r.feedback}
+                  </p>
+                )}
+                {r?.explanation && (
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {x.kind === 'explain' && <span className="text-foreground">Model answer: </span>}
+                    {r.explanation}
+                  </p>
+                )}
               </li>
             );
           })}

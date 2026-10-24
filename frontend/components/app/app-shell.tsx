@@ -1,9 +1,9 @@
 'use client';
 
-import { Activity, Award, CalendarDays, Droplets, GraduationCap, LayoutGrid, Layers, ListChecks, Menu, Plus, Settings, Table2, type LucideIcon } from 'lucide-react';
+import { Activity, Award, CalendarDays, Droplets, GraduationCap, LayoutGrid, Layers, Menu, Settings, Table2, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 import { ThemeToggle } from '@/components/lab/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -26,11 +26,6 @@ const STUDENT_NAV: NavItem[] = [
   { href: '/dashboard/scores', label: 'Scores', icon: Award, exact: false },
   { href: '/dashboard/viva', label: 'Viva', icon: GraduationCap, exact: false },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, exact: false },
-];
-
-const TEACHER_NAV: NavItem[] = [
-  { href: '/teacher', label: 'Vivas', icon: ListChecks, exact: true },
-  { href: '/teacher/viva/new', label: 'New viva', icon: Plus, exact: true },
 ];
 
 const isActive = (pathname: string, item: NavItem) =>
@@ -78,39 +73,28 @@ function Brand({ href }: { href: string }) {
   );
 }
 
-// Signed-in workspace: sidebar on large screens, drawer on smaller ones. Teachers and students each stay in their own area.
+// Signed-in workspace for students: sidebar on large screens, drawer on smaller ones.
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { user } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
-  const isTeacher = user?.role === 'teacher';
-  const inTeacherArea = pathname.startsWith('/teacher');
-  const wrongArea = isTeacher !== inTeacherArea;
-  const home = isTeacher ? '/teacher' : '/dashboard';
-  const nav = isTeacher ? TEACHER_NAV : STUDENT_NAV;
-  const current = nav.find((item) => isActive(pathname, item));
-
-  useEffect(() => {
-    if (wrongArea) router.replace(home);
-  }, [wrongArea, home, router]);
+  const home = '/dashboard';
+  const current = STUDENT_NAV.find((item) => isActive(pathname, item));
 
   return (
     <div className="flex min-h-dvh bg-background">
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col justify-between p-4 lg:flex">
         <div className="space-y-8 pt-1">
           <Brand href={home} />
-          <SideNav items={nav} pathname={pathname} />
+          <SideNav items={STUDENT_NAV} pathname={pathname} />
         </div>
-        {!isTeacher && (
-          <div className="space-y-1 rounded-lg bg-foreground/[0.035] p-3">
-            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <CalendarDays className="size-3.5" /> Active semester
-            </p>
-            <p className="num text-sm font-medium">Semester {user?.semester ?? '—'}</p>
-            <p className="text-xs text-muted-foreground">{user?.branch}</p>
-          </div>
-        )}
+        <div className="space-y-1 rounded-lg bg-foreground/[0.035] p-3">
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <CalendarDays className="size-3.5" /> Active semester
+          </p>
+          <p className="num text-sm font-medium">Semester {user?.semester ?? '—'}</p>
+          <p className="text-xs text-muted-foreground">{user?.branch}</p>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -126,7 +110,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="flex-1 px-4 pb-16 md:px-8">
-          <div className="mx-auto max-w-6xl py-6 md:py-8">{wrongArea ? null : children}</div>
+          <div className="mx-auto max-w-6xl py-6 md:py-8">{children}</div>
         </main>
       </div>
 
@@ -137,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Brand href={home} />
           </SheetHeader>
           <div className="mt-6">
-            <SideNav items={nav} pathname={pathname} onNavigate={() => setMenuOpen(false)} />
+            <SideNav items={STUDENT_NAV} pathname={pathname} onNavigate={() => setMenuOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>

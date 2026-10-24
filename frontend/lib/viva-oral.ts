@@ -40,7 +40,7 @@ export function interviewPrompt(title: string, questions: StudentQuestion[], par
     '- Ask the questions in order, one at a time, by number. Read each question naturally.',
     '- Listen to the full answer, then call save_viva_answer with question_number and the answer in the field the question names. Then give one short acknowledgement and ask the next question.',
     '- If an answer is vague or missing, ask one short follow-up on the same question. If it is still unclear, save what you have and move on.',
-    '- Never say whether an answer is right or wrong and never give the correct answer. A teacher marks the interview.',
+    '- Never say whether an answer is right or wrong and never give the correct answer. The answers are reviewed after the interview.',
     '- After the last answer, or when the student asks to stop, call finish_viva and thank the student.',
     '- Keep each turn to two or three sentences unless the student asks for more.',
     '- Do not use the lab model tools in this interview.',

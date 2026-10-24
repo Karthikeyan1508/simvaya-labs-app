@@ -1,12 +1,11 @@
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import type { ObservationRow as InductionObservationRow } from '@/lib/induction';
 import type { ObservationRow } from '@/lib/types';
+import { firebaseAuth } from '@/lib/firebase';
 
 // Account, academics and records. Everything here except login talks to the backend with the session token.
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-
-// The backend starts Google sign-in and sends the browser back to /auth/callback with a session token.
-export const googleLoginUrl = () => `${BASE}/auth/google`;
 const TOKEN_KEY = 'simvaya.token';
 
 export class ApiError extends Error {
@@ -126,6 +125,13 @@ export interface ActivityItem {
 
 export const login = (email: string, password: string) =>
   post<{ token: string; user: User }>('/auth/login', { email, password }, false);
+
+// Google sign-in runs in Firebase. The backend checks the ID token and returns the same session token as password login.
+export const googleSignIn = async () => {
+  const cred = await signInWithPopup(firebaseAuth(), new GoogleAuthProvider());
+  const idToken = await cred.user.getIdToken();
+  return post<{ token: string; user: User }>('/auth/firebase', { idToken }, false);
+};
 export const logout = () => post<{ ok: true }>('/auth/logout');
 export const fetchMe = () => call<User>('/auth/me');
 

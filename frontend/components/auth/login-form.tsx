@@ -6,25 +6,15 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { googleLoginUrl, login } from '@/lib/account';
+import { googleSignIn, login } from '@/lib/account';
 import { useSession } from '@/components/app/session-provider';
-
-// Set by the backend when Google sign-in cannot finish (see auth/google.controller.ts).
-const GOOGLE_ERRORS: Record<string, string> = {
-  'google-denied': 'Google sign-in was cancelled.',
-  'google-state': 'Google sign-in expired. Try again.',
-  'google-token': 'Google sign-in could not be verified. Try again.',
-  'google-not-configured': 'Google sign-in is not set up on this server yet.',
-};
 
 export function LoginForm() {
   const router = useRouter();
   const { signIn } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(() =>
-    typeof window === 'undefined' ? '' : (GOOGLE_ERRORS[new URLSearchParams(window.location.search).get('error') ?? ''] ?? ''),
-  );
+  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -34,9 +24,29 @@ export function LoginForm() {
     try {
       const res = await login(email.trim(), password);
       signIn(res.token, res.user);
-      router.replace(res.user.role === 'teacher' ? '/teacher' : '/dashboard');
+      router.replace('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in. Try again.');
+      setBusy(false);
+    }
+  };
+
+  const google = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await googleSignIn();
+      signIn(res.token, res.user);
+      router.replace('/dashboard');
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      setError(
+        code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+          ? 'Google sign-in was cancelled.'
+          : err instanceof Error
+            ? err.message
+            : 'Google sign-in failed. Try again.',
+      );
       setBusy(false);
     }
   };
@@ -93,9 +103,8 @@ export function LoginForm() {
           type="button"
           variant="outline"
           className="h-10 w-full"
-          onClick={() => {
-            window.location.href = googleLoginUrl();
-          }}
+          disabled={busy}
+          onClick={google}
         >
           Continue with Google
         </Button>

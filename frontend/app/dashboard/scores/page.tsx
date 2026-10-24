@@ -12,7 +12,7 @@ export default function ScoresPage() {
     <div className="space-y-10">
       <PageHeader
         title="Scores"
-        description="Each experiment ends with a short viva. Your viva scores appear here once your teacher has marked them."
+        description="Each experiment ends with a short oral self-assessment. Your scores appear here once it is marked."
       />
 
       <div className="flex items-center gap-5 rounded-lg bg-card p-6">
@@ -22,7 +22,7 @@ export default function ScoresPage() {
         <div className="space-y-1">
           <p className="text-sm font-medium">Viva results are in the Viva section</p>
           <p className="text-xs text-muted-foreground">
-            Open Viva in the sidebar to answer the vivas your teacher has published and see your results.
+            Open Viva in the sidebar to start a self-assessment and see your results.
           </p>
         </div>
       </div>

@@ -26,7 +26,7 @@ export function Features() {
   return (
     <section id="labs" className="mx-auto max-w-7xl scroll-mt-28 px-5 py-32 md:px-10">
       <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
-        <div className="lg:sticky lg:top-32 lg:self-start">
+        <div className="lg:sticky lg:top-48 lg:self-start">
           <p className="text-sm font-medium text-primary">What is inside</p>
           <h2 className="mt-4 text-5xl leading-[0.95] font-semibold tracking-[-0.035em] md:text-7xl">
             Labs, vivas and records <span className="text-gradient-orange">in one place.</span>

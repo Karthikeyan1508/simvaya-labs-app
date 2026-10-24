@@ -4,6 +4,19 @@ import { animate } from 'animejs';
 export const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// Smooth ramp from 0 at `a` to 1 at `b`, eased at both ends.
+export const smooth = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// How far through a tall section the page has scrolled, from 0 to 1.
+export const progressOf = (el: HTMLElement) => {
+  const total = el.offsetHeight - window.innerHeight;
+  if (total <= 0) return 0;
+  return Math.min(1, Math.max(0, -el.getBoundingClientRect().top / total));
+};
+
 // Pull an element a little toward the pointer, the way a magnet would.
 export const magnetPull = (el: HTMLElement, clientX: number, clientY: number, strength = 0.3) => {
   const r = el.getBoundingClientRect();

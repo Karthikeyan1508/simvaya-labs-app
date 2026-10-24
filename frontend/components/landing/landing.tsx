@@ -3,8 +3,9 @@
 import { useSession } from '@/components/app/session-provider';
 import { Closing } from './closing';
 import { CodeBand } from './code-band';
+import { EngineHero } from './engine-hero';
 import { Features } from './features';
-import { ModelHero } from './model-hero';
+import { LandingShader } from './landing-shader';
 import { Marquee } from './marquee';
 import { Nav } from './nav';
 import { Steps } from './steps';
@@ -13,18 +14,19 @@ import { Steps } from './steps';
 export function Landing() {
   const { status } = useSession();
   const authed = status === 'authed';
-  const primaryHref = authed ? '/experiments/pelton-wheel' : '/login';
+  const primaryHref = authed ? '/dashboard' : '/login';
   const demoHref = authed ? '/dashboard/demo' : '/login';
 
   return (
-    <main className="relative min-h-dvh overflow-x-clip bg-background text-foreground">
+    <main className="relative min-h-dvh overflow-x-clip text-foreground">
+      <LandingShader />
       <Nav />
-      <ModelHero primaryHref={primaryHref} primaryLabel="Open the Pelton lab" />
+      <EngineHero primaryHref={primaryHref} primaryLabel="Start a lab" />
       <Marquee />
       <Features />
       <Steps />
       <CodeBand />
-      <Closing primaryHref={primaryHref} primaryLabel="Open the Pelton lab" demoHref={demoHref} />
+      <Closing primaryHref={primaryHref} primaryLabel="Start a lab" demoHref={demoHref} />
     </main>
   );
 }

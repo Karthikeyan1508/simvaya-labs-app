@@ -19,10 +19,10 @@ export function Closing({
       <section id="demo" className="mx-auto max-w-7xl scroll-mt-28 px-5 py-32 md:px-10">
         <div className="glow-card relative overflow-hidden rounded-lg border border-border/60 p-8 md:p-16">
           <h2 className="max-w-4xl text-5xl leading-[0.92] font-semibold tracking-[-0.04em] md:text-8xl">
-            Give every student a rig they can <span className="text-gradient-orange">break.</span>
+            Start with any <span className="text-gradient-orange">lab.</span>
           </h2>
           <p className="mt-6 max-w-xl text-lg text-muted-foreground">
-            Start with the Pelton wheel turbine, or open the demo to see a sample from each of the five disciplines.
+            Open a lab, or the demo to see all four in one place.
           </p>
           <div className="mt-10 flex flex-wrap gap-3">
             <Link

@@ -14,9 +14,9 @@ const LINKS = [
 
 // A floating glass bar that stays at the top of the landing page.
 export function Nav() {
-  const { status, user } = useSession();
+  const { status } = useSession();
   const authed = status === 'authed';
-  const home = user?.role === 'teacher' ? '/teacher' : '/dashboard';
+  const home = '/dashboard';
 
   return (
     <header className="fixed inset-x-0 top-4 z-40 mx-auto flex w-[min(1100px,calc(100%-2rem))] items-center gap-6 rounded-lg border border-border/60 bg-background/70 py-2.5 pr-2.5 pl-3 backdrop-blur-xl">

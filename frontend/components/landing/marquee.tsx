@@ -4,7 +4,7 @@ import { animate } from 'animejs';
 import { useLayoutEffect, useRef } from 'react';
 import { reducedMotion } from './motion';
 
-const ITEMS = ['Computer Science', 'Electronics', 'Electrical', 'Civil', 'Mechanical', 'Digital twins', 'Live calculations'];
+const ITEMS = ['Pelton wheel', 'Induction motor', 'Zener regulator', 'Sorting', 'Voice assistant', 'Viva', 'Recordings'];
 
 // A slow loop of the disciplines. The track holds two copies, so moving it by half its width loops cleanly.
 export function Marquee() {

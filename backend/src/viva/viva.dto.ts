@@ -20,8 +20,8 @@ export class ProposalDto {
   @IsIn(EXPERIMENT_IDS)
   experimentId!: string;
 
-  @IsIn(['template', 'ai'])
-  mode!: 'template' | 'ai';
+  @IsIn(['template', 'ai', 'agenticorg'])
+  mode!: 'template' | 'ai' | 'agenticorg';
 
   @IsObject()
   counts!: Record<string, unknown>;

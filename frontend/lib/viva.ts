@@ -32,7 +32,7 @@ export interface DraftQuestion {
   unit?: string;
   graph?: { x: number[]; y: number[]; xLabel: string; yLabel: string; peakX?: number };
   explanation?: string;
-  source?: 'template' | 'ai' | 'manual';
+  source?: 'template' | 'ai' | 'agenticorg' | 'manual';
 }
 
 export interface StudentQuestion {
@@ -92,7 +92,7 @@ export interface TeacherViva {
 }
 
 export interface Proposals {
-  source: 'template' | 'ai';
+  source: 'template' | 'ai' | 'agenticorg';
   note?: string;
   questions: DraftQuestion[];
 }
@@ -148,7 +148,7 @@ function request<T>(path: string, method = 'GET', data?: unknown): Promise<T> {
 // Teacher
 export const proposeQuestions = (body: {
   experimentId: string;
-  mode: 'template' | 'ai';
+  mode: 'template' | 'ai' | 'agenticorg';
   counts: Partial<Record<VivaKind, number>>;
   instructions?: string;
 }) => request<Proposals>('/viva/proposals', 'POST', body);

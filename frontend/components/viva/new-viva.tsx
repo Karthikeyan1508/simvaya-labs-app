@@ -31,6 +31,7 @@ const AREA = 'w-full rounded-lg border border-input bg-card px-3 py-2.5 text-[15
 export function NewViva() {
   const router = useRouter();
   const [mode, setMode] = useState<'quick' | 'ai'>('quick');
+  const [drafter, setDrafter] = useState<'ai' | 'agenticorg'>('ai');
   const [title, setTitle] = useState('');
   const [experimentId, setExperimentId] = useState(EXPERIMENTS[0].id);
   const [counts, setCounts] = useState<Partial<Record<VivaKind, number>>>(DEFAULT_COUNTS);
@@ -88,7 +89,7 @@ export function NewViva() {
     try {
       const proposal = await proposeQuestions({
         experimentId,
-        mode: 'ai',
+        mode: drafter,
         counts: activeCounts,
         instructions: instructions.trim() || undefined,
       });
@@ -217,6 +218,28 @@ export function NewViva() {
             })}
           </ul>
         </div>
+
+        {mode === 'ai' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Draft with</span>
+            {(
+              [
+                ['ai', 'Claude'],
+                ['agenticorg', 'AgenticOrg agent'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className="btn-chip"
+                aria-pressed={drafter === value}
+                onClick={() => setDrafter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {mode === 'ai' && (
           <div className="space-y-2">

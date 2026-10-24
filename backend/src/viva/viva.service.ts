@@ -28,6 +28,7 @@ import {
   type VivaSummaryRow,
 } from '../db/viva-repo';
 import { generateWithClaude } from './ai-generator';
+import { agenticOrgConfig, runAgent } from '../agenticorg/agenticorg';
 import { parseDraft } from './draft';
 import { attemptTotals, gradeAnswer, maxScore, parseAnswer, resultFor, type Graded } from './grading';
 import { templateQuestions, type Counts } from './question-bank';
@@ -143,6 +144,74 @@ function checkCounts(raw: Record<string, unknown>): Counts {
   return counts;
 }
 
+function draftTask(counts: Counts, instructions?: string): string {
+  const asked = Object.entries(counts)
+    .map(([kind, n]) => `${n} ${kind}`)
+    .join(', ');
+  return [
+    'Write viva questions for a virtual engineering lab as JSON only: {"questions":[...]}.',
+    `Each question has kind (one of ${VIVA_KINDS.join(', ')}), prompt, points (a whole number) and the fields its kind needs.`,
+    `Ask for: ${asked}.`,
+    instructions ? `Teacher's instructions: ${instructions}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+// The agent's output may be an object with questions, or the same JSON as text.
+function questionsFromOutput(output: unknown): unknown[] {
+  if (typeof output === 'string') return questionsFromOutput(tryJson(output));
+  if (output && typeof output === 'object') {
+    const o = output as { questions?: unknown; text?: unknown };
+    if (Array.isArray(o.questions)) return o.questions;
+    if (typeof o.text === 'string') return questionsFromOutput(tryJson(o.text));
+  }
+  return [];
+}
+
+const tryJson = (s: string): unknown => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+};
+
+// Proposals from an AgenticOrg agent. They are drafts only: the teacher edits and publishes them.
+async function agenticOrgProposal(
+  counts: Counts,
+  instructions: string | undefined,
+  templates: (note?: string) => { source: 'template'; note?: string; questions: DraftQuestion[] },
+) {
+  const cfg = agenticOrgConfig();
+  const agentId = process.env.AGENTICORG_VIVA_AGENT_ID;
+  if (!cfg || !agentId) {
+    return templates('AgenticOrg is not set up (AGENTICORG_API_KEY and AGENTICORG_VIVA_AGENT_ID), so templates were used.');
+  }
+  try {
+    const run = await runAgent(cfg, agentId, { task: draftTask(counts, instructions) });
+    if (run.status === 'hitl_triggered') {
+      return templates('The AgenticOrg agent is waiting for approval in its dashboard, so templates were used.');
+    }
+    if (run.status !== 'completed') {
+      return templates(`The AgenticOrg run ended with status ${run.status}, so templates were used.`);
+    }
+    const parsed = questionsFromOutput(run.output).map((item) => parseDraft(item));
+    const questions = parsed.filter((q): q is DraftQuestion => typeof q !== 'string');
+    if (questions.length === 0) return templates('AgenticOrg returned no valid questions, so templates were used.');
+    const dropped = parsed.length - questions.length;
+    return {
+      source: 'agenticorg' as const,
+      note: dropped > 0 ? `${dropped} invalid question(s) were dropped.` : undefined,
+      questions,
+    };
+  } catch (err) {
+    const why = err instanceof Error ? err.message : 'unknown error';
+    log.warn(`AgenticOrg proposal failed: ${why}`);
+    return templates(`AgenticOrg could not produce questions (${why}), so templates were used.`);
+  }
+}
+
 // Teacher proposals. AI mode falls back to templates on any problem and says why in `note`.
 export async function proposeQuestions(dto: ProposalDto) {
   const counts = checkCounts(dto.counts);
@@ -152,6 +221,7 @@ export async function proposeQuestions(dto: ProposalDto) {
     note,
     questions: templateQuestions(counts, seed),
   });
+  if (dto.mode === 'agenticorg') return agenticOrgProposal(counts, dto.instructions, templates);
   if (dto.mode !== 'ai') return templates();
 
   const apiKey = process.env.ANTHROPIC_API_KEY;

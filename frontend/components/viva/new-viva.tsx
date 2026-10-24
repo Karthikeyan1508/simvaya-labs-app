@@ -224,7 +224,7 @@ export function NewViva() {
             <span className="text-sm text-muted-foreground">Draft with</span>
             {(
               [
-                ['ai', 'Claude'],
+                ['ai', 'Groq AI'],
                 ['agenticorg', 'AgenticOrg agent'],
               ] as const
             ).map(([value, label]) => (

@@ -9,7 +9,7 @@ const clean = (v: unknown, max: number): string | undefined => {
   return t && t.length <= max ? t : undefined;
 };
 
-// Checks one question from a teacher or from Claude. Returns the clean question, or the reason it was refused.
+// Checks one question from a teacher or from an AI drafter. Returns the clean question, or the reason it was refused.
 export function parseDraft(raw: unknown): DraftQuestion | string {
   if (!raw || typeof raw !== 'object') return 'Question must be an object';
   const r = raw as Record<string, unknown>;

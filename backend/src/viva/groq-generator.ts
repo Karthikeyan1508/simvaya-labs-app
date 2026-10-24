@@ -3,7 +3,9 @@ import { parseDraft } from './draft';
 import type { Counts } from './question-bank';
 import { type DraftQuestion, type VivaKind } from './types';
 
-const API_URL = 'https://api.anthropic.com/v1/messages';
+// Groq's OpenAI-compatible chat API. Teacher AI drafts come from here; the teacher still reviews every question.
+const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
 const RULES = `Each item is an object with: kind, prompt, points (use 1), explanation (a short model answer), and:
 - explain: nothing extra. The student writes a free-text answer.
@@ -22,9 +24,9 @@ export interface AiResult {
 }
 
 // Throws on any HTTP, network or parse failure. The caller falls back to templates.
-export async function generateWithClaude(opts: {
+export async function generateWithGroq(opts: {
   apiKey: string;
-  model: string;
+  model?: string;
   counts: Counts;
   instructions?: string;
 }): Promise<AiResult> {
@@ -41,7 +43,7 @@ export async function generateWithClaude(opts: {
     `Write these viva questions for the Pelton wheel lab: ${wanted}.`,
     `Teacher's instructions: ${opts.instructions?.trim() || 'none'}`,
     RULES,
-    'Reply with a JSON array only. No prose, no code fence.',
+    'Reply with a JSON object only, in the form {"questions": [ ... ]}. No prose.',
     `Facts (JSON): ${JSON.stringify(facts)}`,
   ].join('\n\n');
 
@@ -49,31 +51,31 @@ export async function generateWithClaude(opts: {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': opts.apiKey,
-      'anthropic-version': '2023-06-01',
+      authorization: `Bearer ${opts.apiKey}`,
     },
     body: JSON.stringify({
-      model: opts.model,
-      max_tokens: 8000,
-      system: 'You write viva questions for a mechanical engineering lab. Use only the facts given.',
-      messages: [{ role: 'user', content: prompt }],
+      model: opts.model || DEFAULT_MODEL,
+      messages: [
+        { role: 'system', content: 'You write viva questions for a mechanical engineering lab. Use only the facts given. Reply with JSON.' },
+        { role: 'user', content: prompt },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.4,
+      max_tokens: 4000,
     }),
     signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-  const body = (await res.json()) as { content?: { type?: string; text?: string }[] };
-  const text = (body.content ?? []).map((b) => (b.type === 'text' ? (b.text ?? '') : '')).join('');
-  const start = text.indexOf('[');
-  const end = text.lastIndexOf(']');
-  if (start < 0 || end < start) throw new Error('reply had no JSON array');
-  const items: unknown = JSON.parse(text.slice(start, end + 1));
-  if (!Array.isArray(items)) throw new Error('reply was not an array');
+  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const text = body.choices?.[0]?.message?.content ?? '';
+  const parsed = JSON.parse(text) as { questions?: unknown };
+  if (!Array.isArray(parsed.questions)) throw new Error('reply had no questions array');
 
   const used: Partial<Record<VivaKind, number>> = {};
   const questions: DraftQuestion[] = [];
   let dropped = 0;
-  for (const item of items) {
+  for (const item of parsed.questions) {
     const q = parseDraft(item);
     if (typeof q === 'string') {
       dropped++;

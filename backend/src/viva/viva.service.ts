@@ -27,7 +27,7 @@ import {
   type VivaRow,
   type VivaSummaryRow,
 } from '../db/viva-repo';
-import { generateWithClaude } from './ai-generator';
+import { generateWithGroq } from './groq-generator';
 import { agenticOrgConfig, runAgent } from '../agenticorg/agenticorg';
 import { parseDraft } from './draft';
 import { attemptTotals, gradeAnswer, maxScore, parseAnswer, resultFor, type Graded } from './grading';
@@ -190,19 +190,21 @@ async function agenticOrgProposal(
   }
   try {
     const run = await runAgent(cfg, agentId, { task: draftTask(counts, instructions) });
-    if (run.status === 'hitl_triggered') {
-      return templates('The AgenticOrg agent is waiting for approval in its dashboard, so templates were used.');
-    }
-    if (run.status !== 'completed') {
+    // hitl_triggered: AgenticOrg held the run (shadow agents always do). The output is still a draft for the teacher.
+    if (run.status !== 'completed' && run.status !== 'hitl_triggered') {
       return templates(`The AgenticOrg run ended with status ${run.status}, so templates were used.`);
     }
     const parsed = questionsFromOutput(run.output).map((item) => parseDraft(item));
     const questions = parsed.filter((q): q is DraftQuestion => typeof q !== 'string');
     if (questions.length === 0) return templates('AgenticOrg returned no valid questions, so templates were used.');
     const dropped = parsed.length - questions.length;
+    const notes = [
+      run.status === 'hitl_triggered' ? 'AgenticOrg held this run for approval. Check the drafts before publishing.' : '',
+      dropped > 0 ? `${dropped} invalid question(s) were dropped.` : '',
+    ].filter(Boolean);
     return {
       source: 'agenticorg' as const,
-      note: dropped > 0 ? `${dropped} invalid question(s) were dropped.` : undefined,
+      note: notes.length ? notes.join(' ') : undefined,
       questions,
     };
   } catch (err) {
@@ -224,12 +226,12 @@ export async function proposeQuestions(dto: ProposalDto) {
   if (dto.mode === 'agenticorg') return agenticOrgProposal(counts, dto.instructions, templates);
   if (dto.mode !== 'ai') return templates();
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return templates('ANTHROPIC_API_KEY is not set, so templates were used.');
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return templates('GROQ_API_KEY is not set, so templates were used.');
   try {
-    const { questions, dropped } = await generateWithClaude({
+    const { questions, dropped } = await generateWithGroq({
       apiKey,
-      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
+      model: process.env.GROQ_MODEL,
       counts,
       instructions: dto.instructions,
     });
@@ -237,7 +239,7 @@ export async function proposeQuestions(dto: ProposalDto) {
       const want = Object.values(counts).reduce((s, n) => s + (n ?? 0), 0);
       const notes = [
         dropped > 0 ? `${dropped} invalid question(s) were dropped.` : '',
-        questions.length < want ? `Claude gave ${questions.length} of ${want} requested questions.` : '',
+        questions.length < want ? `Groq gave ${questions.length} of ${want} requested questions.` : '',
       ].filter(Boolean);
       return {
         source: 'ai' as const,
@@ -245,11 +247,11 @@ export async function proposeQuestions(dto: ProposalDto) {
         questions,
       };
     }
-    return templates('Claude returned no valid questions, so templates were used.');
+    return templates('Groq returned no valid questions, so templates were used.');
   } catch (err) {
     const why = err instanceof Error ? err.message : 'unknown error';
     log.warn(`AI proposal failed: ${why}`);
-    return templates(`Claude could not generate questions (${why}), so templates were used.`);
+    return templates(`Groq could not generate questions (${why}), so templates were used.`);
   }
 }
 

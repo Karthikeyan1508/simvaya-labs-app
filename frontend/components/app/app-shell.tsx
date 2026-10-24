@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, Award, CalendarDays, Droplets, GraduationCap, LayoutGrid, Layers, Menu, Settings, Table2, type LucideIcon } from 'lucide-react';
+import { Activity, CalendarDays, Droplets, GraduationCap, LayoutGrid, Layers, Menu, Settings, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
@@ -21,9 +21,7 @@ interface NavItem {
 const STUDENT_NAV: NavItem[] = [
   { href: '/dashboard', label: 'Overview', icon: LayoutGrid, exact: true },
   { href: '/dashboard/demo', label: 'Demo', icon: Layers, exact: false },
-  { href: '/dashboard/recordings', label: 'Recordings', icon: Table2, exact: false },
   { href: '/dashboard/activity', label: 'Activity', icon: Activity, exact: false },
-  { href: '/dashboard/scores', label: 'Scores', icon: Award, exact: false },
   { href: '/dashboard/viva', label: 'Viva', icon: GraduationCap, exact: false },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, exact: false },
 ];

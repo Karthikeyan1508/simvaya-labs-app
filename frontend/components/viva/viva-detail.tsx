@@ -247,7 +247,23 @@ function AttemptAnswers({
   onGrade: (questionId: number, score: number) => void;
 }) {
   return (
-    <ol className="space-y-3 py-2">
+    <div className="space-y-5 py-2">
+      {attempt.transcript.length > 0 && (
+        <section className="glass rounded-lg p-4">
+          <h3 className="mb-3 text-sm font-medium">Interview transcript</h3>
+          <ol className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+            {attempt.transcript.map((l, i) => (
+              <li key={i} className="text-sm leading-relaxed">
+                <span className="mr-2 text-xs font-medium text-muted-foreground">
+                  {l.role === 'examiner' ? 'Examiner' : 'Student'}
+                </span>
+                {l.text}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    <ol className="space-y-3">
       {questions.map((q, i) => {
         const a = attempt.answers.find((x) => x.questionId === q.id);
         return (
@@ -285,6 +301,7 @@ function AttemptAnswers({
         );
       })}
     </ol>
+    </div>
   );
 }
 

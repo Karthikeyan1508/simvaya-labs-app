@@ -49,35 +49,35 @@ export class MeController {
   }
 
   @Patch()
-  update(@Req() req: AuthedRequest, @Body() dto: UpdateProfileDto) {
-    updateProfile(req.user.id, dto);
-    return toPublicUser(userById(req.user.id)!);
+  async update(@Req() req: AuthedRequest, @Body() dto: UpdateProfileDto) {
+    await updateProfile(req.user.id, dto);
+    return toPublicUser((await userById(req.user.id))!);
   }
 
   @Post('password')
-  changePassword(@Req() req: AuthedRequest, @Body() dto: ChangePasswordDto) {
-    const row = userById(req.user.id)!;
+  async changePassword(@Req() req: AuthedRequest, @Body() dto: ChangePasswordDto) {
+    const row = (await userById(req.user.id))!;
     if (!verifyPassword(dto.current, row.password_hash)) {
       throw new BadRequestException('Current password is incorrect');
     }
-    setPasswordHash(row.id, hashPassword(dto.next));
+    await setPasswordHash(row.id, hashPassword(dto.next));
     return { ok: true };
   }
 
   // Numbers for the dashboard overview. Viva score stays null until the viva module exists.
   @Get('summary')
-  summary(@Req() req: AuthedRequest) {
+  async summary(@Req() req: AuthedRequest) {
     const id = req.user.id;
     const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
-    const attempts = attemptsByExperiment(id).map((a) => ({ experimentId: a.experiment_id, count: a.n }));
+    const attempts = (await attemptsByExperiment(id)).map((a) => ({ experimentId: a.experiment_id, count: a.n }));
     return {
       attempts: {
         total: attempts.reduce((s, a) => s + a.count, 0),
         byExperiment: attempts,
       },
-      recordings: countRecordings(id),
-      activitiesThisWeek: activitiesSince(id, weekAgo),
-      lastActiveAt: lastActivityAt(id),
+      recordings: await countRecordings(id),
+      activitiesThisWeek: await activitiesSince(id, weekAgo),
+      lastActiveAt: await lastActivityAt(id),
       vivaScore: null,
     };
   }

@@ -8,8 +8,8 @@ import { SEMESTERS } from './catalog';
 @UseGuards(AuthGuard)
 export class AcademicsController {
   @Get()
-  overview(@Req() req: AuthedRequest) {
-    const performed = new Set(attemptsByExperiment(req.user.id).map((a) => a.experiment_id));
+  async overview(@Req() req: AuthedRequest) {
+    const performed = new Set((await attemptsByExperiment(req.user.id)).map((a) => a.experiment_id));
     const active = req.user.semester;
 
     return {

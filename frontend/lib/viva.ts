@@ -65,6 +65,12 @@ export type AnswerPayload =
   | { step: number }
   | { value: number };
 
+export interface TranscriptLine {
+  role: 'examiner' | 'student';
+  text: string;
+  at: string;
+}
+
 export interface Attempt {
   id: number;
   studentName: string;
@@ -75,6 +81,7 @@ export interface Attempt {
   score: number | null;
   maxScore: number;
   pendingReview: boolean;
+  transcript: TranscriptLine[];
   answers: { questionId: number; answer: AnswerPayload; correct: boolean | null; score: number | null }[];
 }
 
@@ -113,6 +120,17 @@ export interface MyVivaDetail {
   questions: StudentQuestion[];
   attempt: { id: number; status: 'in_progress' | 'submitted'; answers: { questionId: number; answer: AnswerPayload }[] } | null;
   results: Result[] | null;
+  transcript: TranscriptLine[];
+}
+
+// One spoken answer, as the examiner agent sends it. questionNumber counts from 1.
+export interface SpokenAnswer {
+  questionNumber: number;
+  text?: string;
+  option?: number;
+  value?: number;
+  step?: number;
+  partId?: string;
 }
 
 export interface SubmitResult {
@@ -153,6 +171,11 @@ export const startViva = (id: number) =>
 export const saveAnswer = (id: number, questionId: number, answer: AnswerPayload) =>
   request<unknown>(`/me/vivas/${id}/answers`, 'PUT', { questionId, answer });
 export const submitViva = (id: number) => request<SubmitResult>(`/me/vivas/${id}/submit`, 'POST');
+// Oral interview. The examiner's tool replies with a short message the agent says aloud.
+export const saveSpokenAnswer = (id: number, body: SpokenAnswer) =>
+  request<{ ok: boolean; message: string }>(`/me/vivas/${id}/spoken-answer`, 'POST', body);
+export const saveTranscript = (id: number, transcript: TranscriptLine[]) =>
+  request<{ ok: boolean }>(`/me/vivas/${id}/transcript`, 'PUT', { transcript });
 
 // Pure helpers
 

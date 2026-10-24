@@ -6,18 +6,25 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { login } from '@/lib/account';
+import { googleLoginUrl, login } from '@/lib/account';
 import { useSession } from '@/components/app/session-provider';
 
-const DEMO = { email: 'student@simvaya.lab', password: 'simvaya-demo' };
-const TEACHER_DEMO = { email: 'teacher@simvaya.lab', password: 'simvaya-teacher' };
+// Set by the backend when Google sign-in cannot finish (see auth/google.controller.ts).
+const GOOGLE_ERRORS: Record<string, string> = {
+  'google-denied': 'Google sign-in was cancelled.',
+  'google-state': 'Google sign-in expired. Try again.',
+  'google-token': 'Google sign-in could not be verified. Try again.',
+  'google-not-configured': 'Google sign-in is not set up on this server yet.',
+};
 
 export function LoginForm() {
   const router = useRouter();
   const { signIn } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() =>
+    typeof window === 'undefined' ? '' : (GOOGLE_ERRORS[new URLSearchParams(window.location.search).get('error') ?? ''] ?? ''),
+  );
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -81,29 +88,20 @@ export function LoginForm() {
         </Button>
       </form>
 
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-y-2 text-sm">
-        <div className="flex flex-wrap gap-1">
-          {[
-            { label: 'Fill the demo account', account: DEMO },
-            { label: 'Fill the teacher account', account: TEACHER_DEMO },
-          ].map(({ label, account }) => (
-            <Button
-              key={label}
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setEmail(account.email);
-                setPassword(account.password);
-                setError('');
-              }}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
-        <span className="text-muted-foreground">Forgot password? Ask your lab admin</span>
+      <div className="mt-8">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 w-full"
+          onClick={() => {
+            window.location.href = googleLoginUrl();
+          }}
+        >
+          Continue with Google
+        </Button>
       </div>
+
+      <p className="mt-8 text-sm text-muted-foreground">Forgot password? Ask your lab admin.</p>
     </div>
   );
 }

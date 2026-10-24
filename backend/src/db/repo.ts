@@ -1,5 +1,5 @@
-import { randomBytes } from 'node:crypto';
-import { db } from './db';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { one, query, run } from './db';
 
 export type UserRole = 'student' | 'teacher';
 
@@ -33,96 +33,100 @@ export interface ActivityRow {
 const SESSION_DAYS = 30;
 const now = () => new Date().toISOString();
 
-export const userByEmail = (email: string) =>
-  db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
+export const userByEmail = (email: string) => one<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
 
-export const userById = (id: string) =>
-  db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+export const userById = (id: string) => one<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
 
-export function updateProfile(id: string, p: { name?: string; rollNo?: string; college?: string }) {
-  db.prepare(
+export async function updateProfile(id: string, p: { name?: string; rollNo?: string; college?: string }) {
+  await run(
     `UPDATE users SET
-       name = COALESCE(?, name),
-       roll_no = COALESCE(?, roll_no),
-       college = COALESCE(?, college)
-     WHERE id = ?`,
-  ).run(p.name ?? null, p.rollNo ?? null, p.college ?? null, id);
+       name = COALESCE($1, name),
+       roll_no = COALESCE($2, roll_no),
+       college = COALESCE($3, college)
+     WHERE id = $4`,
+    [p.name ?? null, p.rollNo ?? null, p.college ?? null, id],
+  );
 }
 
-export function setPasswordHash(id: string, hash: string) {
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, id);
+export async function setPasswordHash(id: string, hash: string) {
+  await run('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
 }
 
-export function createSession(userId: string): string {
+export async function createSession(userId: string): Promise<string> {
   const token = randomBytes(32).toString('hex');
   const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000).toISOString();
-  db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expires);
+  await run('INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)', [token, userId, expires]);
   return token;
 }
 
-export function userForSession(token: string) {
-  return db
-    .prepare(
-      `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-       WHERE s.token = ? AND s.expires_at > ?`,
-    )
-    .get(token, now()) as UserRow | undefined;
-}
+export const userForSession = (token: string) =>
+  one<UserRow>(
+    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token = $1 AND s.expires_at > $2`,
+    [token, now()],
+  );
 
-export const deleteSession = (token: string) => db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+export const deleteSession = (token: string) => run('DELETE FROM sessions WHERE token = $1', [token]);
 
-export function insertRecording(userId: string, experimentId: string, data: Record<string, unknown>) {
+export async function insertRecording(userId: string, experimentId: string, data: Record<string, unknown>) {
   const created = now();
-  const res = db
-    .prepare('INSERT INTO recordings (user_id, experiment_id, data, created_at) VALUES (?, ?, ?, ?)')
-    .run(userId, experimentId, JSON.stringify(data), created);
-  return { id: Number(res.lastInsertRowid), experimentId, data, createdAt: created };
+  const [row] = await query<{ id: number }>(
+    'INSERT INTO recordings (user_id, experiment_id, data, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
+    [userId, experimentId, JSON.stringify(data), created],
+  );
+  return { id: row.id, experimentId, data, createdAt: created };
 }
 
 export const listRecordings = (userId: string, experimentId?: string) =>
-  (experimentId
-    ? db
-        .prepare('SELECT id, experiment_id, data, created_at FROM recordings WHERE user_id = ? AND experiment_id = ? ORDER BY id DESC')
-        .all(userId, experimentId)
-    : db
-        .prepare('SELECT id, experiment_id, data, created_at FROM recordings WHERE user_id = ? ORDER BY id DESC')
-        .all(userId)) as unknown as (RecordingRow)[];
+  experimentId
+    ? query<RecordingRow>(
+        'SELECT id, experiment_id, data, created_at FROM recordings WHERE user_id = $1 AND experiment_id = $2 ORDER BY id DESC',
+        [userId, experimentId],
+      )
+    : query<RecordingRow>(
+        'SELECT id, experiment_id, data, created_at FROM recordings WHERE user_id = $1 ORDER BY id DESC',
+        [userId],
+      );
 
-export function insertActivity(userId: string, type: string, experimentId: string | null) {
-  db.prepare('INSERT INTO activities (user_id, type, experiment_id, created_at) VALUES (?, ?, ?, ?)').run(
+export async function insertActivity(userId: string, type: string, experimentId: string | null) {
+  await run('INSERT INTO activities (user_id, type, experiment_id, created_at) VALUES ($1, $2, $3, $4)', [
     userId,
     type,
     experimentId,
     now(),
-  );
+  ]);
 }
 
 export const listActivities = (userId: string, limit: number) =>
-  db
-    .prepare('SELECT id, type, experiment_id, created_at FROM activities WHERE user_id = ? ORDER BY id DESC LIMIT ?')
-    .all(userId, limit) as unknown as ActivityRow[];
+  query<ActivityRow>(
+    'SELECT id, type, experiment_id, created_at FROM activities WHERE user_id = $1 ORDER BY id DESC LIMIT $2',
+    [userId, limit],
+  );
 
 // Attempts = times the pump was started in an experiment visit.
 export const attemptsByExperiment = (userId: string) =>
-  db
-    .prepare(
-      `SELECT experiment_id, COUNT(*) AS n FROM activities
-       WHERE user_id = ? AND type = 'attempt_started' GROUP BY experiment_id`,
-    )
-    .all(userId) as unknown as { experiment_id: string; n: number }[];
+  query<{ experiment_id: string; n: number }>(
+    `SELECT experiment_id, COUNT(*)::int AS n FROM activities
+     WHERE user_id = $1 AND type = 'attempt_started' GROUP BY experiment_id`,
+    [userId],
+  );
 
-export const countRecordings = (userId: string) =>
-  (db.prepare('SELECT COUNT(*) AS n FROM recordings WHERE user_id = ?').get(userId) as { n: number }).n;
+export const countRecordings = async (userId: string) =>
+  (await one<{ n: number }>('SELECT COUNT(*)::int AS n FROM recordings WHERE user_id = $1', [userId]))?.n ?? 0;
 
-export const activitiesSince = (userId: string, sinceIso: string) =>
-  (
-    db
-      .prepare('SELECT COUNT(*) AS n FROM activities WHERE user_id = ? AND created_at >= ?')
-      .get(userId, sinceIso) as { n: number }
-  ).n;
+export const activitiesSince = async (userId: string, sinceIso: string) =>
+  (await one<{ n: number }>('SELECT COUNT(*)::int AS n FROM activities WHERE user_id = $1 AND created_at >= $2', [userId, sinceIso]))?.n ?? 0;
 
-export const lastActivityAt = (userId: string) =>
-  (
-    db.prepare('SELECT MAX(created_at) AS t FROM activities WHERE user_id = ?').get(userId) as { t: string | null }
-  ).t;
+export const lastActivityAt = async (userId: string) =>
+  (await one<{ t: string | null }>('SELECT MAX(created_at) AS t FROM activities WHERE user_id = $1', [userId]))?.t ?? null;
 
+// Accounts made by Google sign-in have no password: an empty hash never verifies.
+export async function createGoogleUser(email: string, name: string): Promise<UserRow> {
+  const id = randomUUID();
+  await run(
+    `INSERT INTO users (id, email, password_hash, name, roll_no, college, branch, semester, created_at)
+     VALUES ($1, $2, '', $3, '', '', 'Mechanical Engineering', 1, $4)`,
+    [id, email, name, now()],
+  );
+  return (await userById(id))!;
+}

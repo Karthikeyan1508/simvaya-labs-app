@@ -13,6 +13,7 @@ import {
   replaceQuestions,
   setAnswerScore,
   setAttemptScore,
+  setTranscript,
   setVivaStatus,
   updateTitle,
   upsertAnswer,
@@ -39,7 +40,7 @@ import {
   type VivaKind,
   type VivaStatus,
 } from './types';
-import type { AnswerDto, CreateVivaDto, GradeDto, ProposalDto } from './viva.dto';
+import type { AnswerDto, CreateVivaDto, GradeDto, ProposalDto, SpokenAnswerDto } from './viva.dto';
 
 const log = new Logger('Viva');
 const now = () => new Date().toISOString();
@@ -58,23 +59,23 @@ export function summaryOf(r: VivaSummaryRow) {
   };
 }
 
-const summaryById = (id: number) => summaryOf(vivaSummary(id)!);
+const summaryById = async (id: number) => summaryOf((await vivaSummary(id))!);
 
-function ownedViva(id: number, teacherId: string): VivaRow {
-  const v = vivaRow(id);
+async function ownedViva(id: number, teacherId: string): Promise<VivaRow> {
+  const v = await vivaRow(id);
   if (!v || v.teacher_id !== teacherId) throw new NotFoundException('Viva not found');
   return v;
 }
 
 // Students see published vivas. Closed ones stay open to finish an attempt already started.
-function openViva(id: number): VivaRow {
-  const v = vivaRow(id);
+async function openViva(id: number): Promise<VivaRow> {
+  const v = await vivaRow(id);
   if (!v || v.status === 'draft') throw new NotFoundException('Viva not found');
   return v;
 }
 
-const questionsOf = (vivaId: number): Question[] =>
-  questionRows(vivaId).map((r) => ({ ...(JSON.parse(r.data) as DraftQuestion), id: r.id }));
+const questionsOf = async (vivaId: number): Promise<Question[]> =>
+  (await questionRows(vivaId)).map((r) => ({ ...(JSON.parse(r.data) as DraftQuestion), id: r.id }));
 
 const parsedAnswer = (text: string | null): StoredAnswer | null =>
   text === null ? null : (JSON.parse(text) as StoredAnswer);
@@ -86,6 +87,29 @@ const gradedOf = (rows: AnswerRow[]) =>
       { correct: r.correct === null ? null : r.correct === 1, score: r.score },
     ]),
   );
+
+// The transcript is stored as JSON. Anything that is not a well-formed line is dropped on read.
+export type TranscriptLine = { role: 'examiner' | 'student'; text: string; at: string };
+const parsedTranscript = (text: string | null): TranscriptLine[] => {
+  if (!text) return [];
+  try {
+    return (JSON.parse(text) as TranscriptLine[]).filter((l) => l && typeof l.text === 'string');
+  } catch {
+    return [];
+  }
+};
+
+// Which spoken field carries the answer for each question kind. Same shapes as parseAnswer.
+const SPOKEN_FIELD = {
+  explain: 'text',
+  highlight: 'text',
+  mcq: 'option',
+  formula: 'option',
+  point: 'partId',
+  step: 'step',
+  calc: 'value',
+  graph: 'value',
+} as const;
 
 // Checks each question. A numeric id is kept so an edit can keep the question's identity.
 function parseQuestions(raw: unknown[]): DraftQuestion[] {
@@ -159,14 +183,14 @@ export async function proposeQuestions(dto: ProposalDto) {
   }
 }
 
-export function createViva(dto: CreateVivaDto, teacherId: string) {
+export async function createViva(dto: CreateVivaDto, teacherId: string) {
   const questions = parseQuestions(dto.questions);
   if (dto.publish && questions.length === 0) {
     throw new BadRequestException('Add at least one question before publishing');
   }
   const t = now();
-  const id = inTransaction(() => {
-    const vivaId = insertViva(
+  const id = await inTransaction(async () => {
+    const vivaId = await insertViva(
       teacherId,
       cleanTitle(dto.title),
       dto.experimentId,
@@ -174,27 +198,28 @@ export function createViva(dto: CreateVivaDto, teacherId: string) {
       dto.publish ? t : null,
       t,
     );
-    replaceQuestions(vivaId, questions);
+    await replaceQuestions(vivaId, questions);
     return vivaId;
   });
   return summaryById(id);
 }
 
-export function listTeacherVivas(teacherId: string) {
-  return vivasByTeacher(teacherId).map(summaryOf);
+export async function listTeacherVivas(teacherId: string) {
+  return (await vivasByTeacher(teacherId)).map(summaryOf);
 }
 
-export function teacherViva(id: number, teacherId: string) {
-  const v = ownedViva(id, teacherId);
-  const questions = questionsOf(v.id);
+export async function teacherViva(id: number, teacherId: string) {
+  const v = await ownedViva(id, teacherId);
+  const questions = await questionsOf(v.id);
+  const attempts = await attemptsForViva(v.id);
   return {
-    viva: summaryById(v.id),
+    viva: await summaryById(v.id),
     questions,
-    attempts: attemptsForViva(v.id).map((a) => attemptView(a, questions)),
+    attempts: await Promise.all(attempts.map((a) => attemptView(a, questions))),
   };
 }
 
-function attemptView(a: AttemptRow, questions: Question[]) {
+async function attemptView(a: AttemptRow, questions: Question[]) {
   return {
     id: a.id,
     studentName: a.student_name ?? '',
@@ -205,7 +230,8 @@ function attemptView(a: AttemptRow, questions: Question[]) {
     score: a.score,
     maxScore: maxScore(questions),
     pendingReview: a.pending_review === 1,
-    answers: answerRows(a.id).map((r) => ({
+    transcript: parsedTranscript(a.transcript),
+    answers: (await answerRows(a.id)).map((r) => ({
       questionId: r.question_id,
       answer: parsedAnswer(r.answer),
       correct: r.correct === null ? null : r.correct === 1,
@@ -214,78 +240,80 @@ function attemptView(a: AttemptRow, questions: Question[]) {
   };
 }
 
-export function updateViva(id: number, dto: { title?: string; questions?: unknown[] }, teacherId: string) {
-  const v = ownedViva(id, teacherId);
+export async function updateViva(id: number, dto: { title?: string; questions?: unknown[] }, teacherId: string) {
+  const v = await ownedViva(id, teacherId);
   if (v.status !== 'draft') throw new ConflictException('Only draft vivas can be edited');
   const questions = dto.questions ? parseQuestions(dto.questions) : undefined;
   const title = dto.title === undefined ? undefined : cleanTitle(dto.title);
-  inTransaction(() => {
-    if (title !== undefined) updateTitle(v.id, title);
-    if (questions) replaceQuestions(v.id, questions);
+  await inTransaction(async () => {
+    if (title !== undefined) await updateTitle(v.id, title);
+    if (questions) await replaceQuestions(v.id, questions);
   });
   return summaryById(v.id);
 }
 
-export function changeStatus(id: number, status: VivaStatus, teacherId: string) {
-  ownedViva(id, teacherId);
-  if (status === 'published' && questionRows(id).length === 0) {
+export async function changeStatus(id: number, status: VivaStatus, teacherId: string) {
+  await ownedViva(id, teacherId);
+  if (status === 'published' && (await questionRows(id)).length === 0) {
     throw new BadRequestException('Add at least one question before publishing');
   }
-  setVivaStatus(id, status, status === 'published' ? now() : null);
+  await setVivaStatus(id, status, status === 'published' ? now() : null);
   return summaryById(id);
 }
 
-export function removeViva(id: number, teacherId: string) {
-  ownedViva(id, teacherId);
-  deleteViva(id);
+export async function removeViva(id: number, teacherId: string) {
+  await ownedViva(id, teacherId);
+  await deleteViva(id);
   return { ok: true };
 }
 
-export function gradeAttempt(vivaId: number, attemptId: number, dto: GradeDto, teacherId: string) {
-  const v = ownedViva(vivaId, teacherId);
-  const a = attemptById(attemptId);
+export async function gradeAttempt(vivaId: number, attemptId: number, dto: GradeDto, teacherId: string) {
+  const v = await ownedViva(vivaId, teacherId);
+  const a = await attemptById(attemptId);
   if (!a || a.viva_id !== v.id) throw new NotFoundException('Attempt not found');
   if (a.status !== 'submitted') throw new ConflictException('Only submitted attempts can be graded');
-  const questions = questionsOf(v.id);
+  const questions = await questionsOf(v.id);
   const q = questions.find((x) => x.id === dto.questionId);
   if (!q) throw new NotFoundException('Question not found');
   if (dto.score < 0 || dto.score > q.points) throw new BadRequestException(`Score must be between 0 and ${q.points}`);
 
-  inTransaction(() => {
-    setAnswerScore(a.id, q.id, dto.score);
-    const totals = attemptTotals(questions, gradedOf(answerRows(a.id)));
-    setAttemptScore(a.id, totals.score, totals.pendingReview);
+  await inTransaction(async () => {
+    await setAnswerScore(a.id, q.id, dto.score);
+    const totals = attemptTotals(questions, gradedOf(await answerRows(a.id)));
+    await setAttemptScore(a.id, totals.score, totals.pendingReview);
   });
   return { ok: true };
 }
 
-export function listOpenVivas(userId: string) {
-  return vivasPublished().map((r) => {
-    const a = attemptFor(r.id, userId);
-    return {
-      ...summaryOf(r),
-      myAttempt: a ? { id: a.id, status: a.status, score: a.score, pendingReview: a.pending_review === 1 } : null,
-    };
-  });
+export async function listOpenVivas(userId: string) {
+  return Promise.all(
+    (await vivasPublished()).map(async (r) => {
+      const a = await attemptFor(r.id, userId);
+      return {
+        ...summaryOf(r),
+        myAttempt: a ? { id: a.id, status: a.status, score: a.score, pendingReview: a.pending_review === 1 } : null,
+      };
+    }),
+  );
 }
 
-export function startAttempt(vivaId: number, userId: string) {
-  const v = openViva(vivaId);
-  let a = attemptFor(v.id, userId);
+export async function startAttempt(vivaId: number, userId: string) {
+  const v = await openViva(vivaId);
+  let a = await attemptFor(v.id, userId);
   if (!a) {
     if (v.status !== 'published') throw new NotFoundException('Viva is not open');
-    insertAttempt(v.id, userId, now());
-    a = attemptFor(v.id, userId)!;
+    await insertAttempt(v.id, userId, now());
+    a = (await attemptFor(v.id, userId))!;
   }
   return { attemptId: a.id, status: a.status, startedAt: a.started_at };
 }
 
-export function studentViva(vivaId: number, userId: string) {
-  const v = openViva(vivaId);
-  const a = attemptFor(v.id, userId);
+export async function studentViva(vivaId: number, userId: string) {
+  const v = await openViva(vivaId);
+  const a = await attemptFor(v.id, userId);
   if (!a && v.status !== 'published') throw new NotFoundException('Viva is not open');
-  const questions = questionsOf(v.id);
-  const rows = a ? answerRows(a.id) : [];
+  const questions = await questionsOf(v.id);
+  const rows = a ? await answerRows(a.id) : [];
   const graded = gradedOf(rows);
   return {
     viva: { id: v.id, title: v.title, experimentId: v.experiment_id, status: v.status, maxScore: maxScore(questions) },
@@ -300,39 +328,40 @@ export function studentViva(vivaId: number, userId: string) {
         }
       : null,
     results: a?.status === 'submitted' ? questions.map((q) => resultFor(q, graded.get(q.id))) : null,
+    transcript: a ? parsedTranscript(a.transcript) : [],
   };
 }
 
-export function saveAnswer(vivaId: number, dto: AnswerDto, userId: string) {
-  const v = openViva(vivaId);
-  const a = attemptFor(v.id, userId);
+export async function saveAnswer(vivaId: number, dto: AnswerDto, userId: string) {
+  const v = await openViva(vivaId);
+  const a = await attemptFor(v.id, userId);
   if (!a) throw new ConflictException('Start the viva before answering');
   if (a.status !== 'in_progress') throw new ConflictException('This attempt is already submitted');
-  const q = questionsOf(v.id).find((x) => x.id === dto.questionId);
+  const q = (await questionsOf(v.id)).find((x) => x.id === dto.questionId);
   if (!q) throw new NotFoundException('Question not found');
   const stored = parseAnswer(q, dto.answer);
   if (!stored) throw new BadRequestException('Answer does not fit this question');
-  upsertAnswer(a.id, q.id, JSON.stringify(stored));
+  await upsertAnswer(a.id, q.id, JSON.stringify(stored));
   return { ok: true };
 }
 
-export function submitAttempt(vivaId: number, userId: string) {
-  const v = openViva(vivaId);
-  const a = attemptFor(v.id, userId);
+export async function submitAttempt(vivaId: number, userId: string) {
+  const v = await openViva(vivaId);
+  const a = await attemptFor(v.id, userId);
   if (!a) throw new ConflictException('Start the viva before submitting');
   if (a.status === 'submitted') throw new ConflictException('This attempt is already submitted');
-  const questions = questionsOf(v.id);
+  const questions = await questionsOf(v.id);
 
-  return inTransaction(() => {
-    const saved = new Map(answerRows(a.id).map((r) => [r.question_id, r] as const));
+  return inTransaction(async () => {
+    const saved = new Map((await answerRows(a.id)).map((r) => [r.question_id, r] as const));
     for (const q of questions) {
       const row = saved.get(q.id);
       const g = gradeAnswer(q, parsedAnswer(row?.answer ?? null));
-      writeGrade(a.id, q.id, row?.answer ?? null, g.correct, g.score);
+      await writeGrade(a.id, q.id, row?.answer ?? null, g.correct, g.score);
     }
-    const graded = gradedOf(answerRows(a.id));
+    const graded = gradedOf(await answerRows(a.id));
     const totals = attemptTotals(questions, graded);
-    finishAttempt(a.id, now(), totals.score, totals.pendingReview);
+    await finishAttempt(a.id, now(), totals.score, totals.pendingReview);
     return {
       score: totals.score,
       maxScore: maxScore(questions),
@@ -340,4 +369,42 @@ export function submitAttempt(vivaId: number, userId: string) {
       results: questions.map((q) => resultFor(q, graded.get(q.id))),
     };
   });
+}
+
+// Oral interview: the examiner agent passes each spoken answer with its question number. The reply is a short
+// sentence the agent can say aloud, so a wrong answer asks the student again instead of failing the call.
+export async function saveSpokenAnswer(vivaId: number, dto: SpokenAnswerDto, userId: string) {
+  const v = await openViva(vivaId);
+  const a = await attemptFor(v.id, userId);
+  if (!a) return { ok: false, message: 'The viva has not started yet.' };
+  if (a.status !== 'in_progress') return { ok: false, message: 'The viva is already submitted.' };
+  const questions = await questionsOf(v.id);
+  const q = questions[dto.questionNumber - 1];
+  if (!q) return { ok: false, message: `There is no question ${dto.questionNumber}.` };
+  const field = SPOKEN_FIELD[q.kind];
+  const stored = parseAnswer(q, { [field]: dto[field] });
+  if (!stored) return { ok: false, message: `That does not answer question ${dto.questionNumber}. Ask the student again.` };
+  await upsertAnswer(a.id, q.id, JSON.stringify(stored));
+  return { ok: true, message: `Saved the answer to question ${dto.questionNumber}.` };
+}
+
+// The whole conversation, kept with the attempt for the teacher to read next to the marks.
+export async function saveTranscript(vivaId: number, lines: unknown[], userId: string) {
+  const v = await openViva(vivaId);
+  const a = await attemptFor(v.id, userId);
+  if (!a) throw new ConflictException('Start the viva before saving the interview');
+  const clean: TranscriptLine[] = [];
+  for (const item of lines) {
+    const l = item as { role?: unknown; text?: unknown; at?: unknown };
+    if ((l.role !== 'examiner' && l.role !== 'student') || typeof l.text !== 'string') {
+      throw new BadRequestException('Each transcript line needs a role and text');
+    }
+    clean.push({
+      role: l.role,
+      text: l.text.slice(0, 2000),
+      at: typeof l.at === 'string' ? l.at.slice(0, 40) : now(),
+    });
+  }
+  await setTranscript(a.id, JSON.stringify(clean));
+  return { ok: true };
 }

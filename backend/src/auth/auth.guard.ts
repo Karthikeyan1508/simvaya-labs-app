@@ -7,11 +7,11 @@ export type AuthedRequest = Request & { user: UserRow; token: string };
 // Reads "Authorization: Bearer <token>", finds the live session and attaches the user.
 @Injectable()
 export class AuthGuard implements CanActivate {
-  canActivate(ctx: ExecutionContext): boolean {
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request>() as AuthedRequest;
     const header = req.headers.authorization ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-    const user = token ? userForSession(token) : undefined;
+    const user = token ? await userForSession(token) : undefined;
     if (!user) throw new UnauthorizedException('Sign in to continue');
     req.user = user;
     req.token = token;

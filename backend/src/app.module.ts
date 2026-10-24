@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AcademicsController } from './academics/academics.controller';
 import { AuthController } from './auth/auth.controller';
+import { GoogleAuthController } from './auth/google.controller';
 import { MeController } from './me/me.controller';
 import { RecordsController } from './me/records.controller';
 import { PeltonWheelController } from './experiments/pelton-wheel/pelton-wheel.controller';
@@ -12,6 +13,7 @@ import { VoiceController } from './voice/voice.controller';
 @Module({
   controllers: [
     AuthController,
+    GoogleAuthController,
     MeController,
     RecordsController,
     AcademicsController,

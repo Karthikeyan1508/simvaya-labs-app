@@ -1,5 +1,7 @@
-import { db } from './db';
+import { one, query, run, inTransaction } from './db';
 import type { DraftQuestion, VivaStatus } from '../viva/types';
+
+export { inTransaction };
 
 export interface VivaRow {
   id: number;
@@ -31,6 +33,7 @@ export interface AttemptRow {
   submitted_at: string | null;
   score: number | null;
   pending_review: number;
+  transcript: string | null;
   student_name?: string;
   student_email?: string;
 }
@@ -45,125 +48,110 @@ export interface AnswerRow {
 
 // One row per viva with its counts. Used by the teacher and student lists.
 const SUMMARY_SQL = `SELECT v.*,
-    (SELECT COUNT(*) FROM viva_questions q WHERE q.viva_id = v.id) AS question_count,
-    (SELECT COUNT(*) FROM viva_attempts a WHERE a.viva_id = v.id) AS attempt_count,
-    (SELECT COUNT(*) FROM viva_attempts a WHERE a.viva_id = v.id AND a.status = 'submitted') AS submitted_count
+    (SELECT COUNT(*)::int FROM viva_questions q WHERE q.viva_id = v.id) AS question_count,
+    (SELECT COUNT(*)::int FROM viva_attempts a WHERE a.viva_id = v.id) AS attempt_count,
+    (SELECT COUNT(*)::int FROM viva_attempts a WHERE a.viva_id = v.id AND a.status = 'submitted') AS submitted_count
   FROM vivas v`;
 
-// Multi-row writes run inside this. The functions below never open a transaction themselves.
-export function inTransaction<T>(fn: () => T): T {
-  db.exec('BEGIN');
-  try {
-    const out = fn();
-    db.exec('COMMIT');
-    return out;
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
-}
+export const vivaRow = (id: number) => one<VivaRow>('SELECT * FROM vivas WHERE id = $1', [id]);
 
-export const vivaRow = (id: number) =>
-  db.prepare('SELECT * FROM vivas WHERE id = ?').get(id) as VivaRow | undefined;
-
-export const vivaSummary = (id: number) =>
-  db.prepare(`${SUMMARY_SQL} WHERE v.id = ?`).get(id) as VivaSummaryRow | undefined;
+export const vivaSummary = (id: number) => one<VivaSummaryRow>(`${SUMMARY_SQL} WHERE v.id = $1`, [id]);
 
 export const vivasByTeacher = (teacherId: string) =>
-  db.prepare(`${SUMMARY_SQL} WHERE v.teacher_id = ? ORDER BY v.id DESC`).all(teacherId) as unknown as VivaSummaryRow[];
+  query<VivaSummaryRow>(`${SUMMARY_SQL} WHERE v.teacher_id = $1 ORDER BY v.id DESC`, [teacherId]);
 
 export const vivasPublished = () =>
-  db
-    .prepare(`${SUMMARY_SQL} WHERE v.status = 'published' ORDER BY v.published_at DESC, v.id DESC`)
-    .all() as unknown as VivaSummaryRow[];
+  query<VivaSummaryRow>(`${SUMMARY_SQL} WHERE v.status = 'published' ORDER BY v.published_at DESC, v.id DESC`);
 
-export function insertViva(
+export async function insertViva(
   teacherId: string,
   title: string,
   experimentId: string,
   status: VivaStatus,
   publishedAt: string | null,
   createdAt: string,
-): number {
-  const res = db
-    .prepare('INSERT INTO vivas (teacher_id, title, experiment_id, status, created_at, published_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(teacherId, title, experimentId, status, createdAt, publishedAt);
-  return Number(res.lastInsertRowid);
+): Promise<number> {
+  const [row] = await query<{ id: number }>(
+    'INSERT INTO vivas (teacher_id, title, experiment_id, status, created_at, published_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+    [teacherId, title, experimentId, status, createdAt, publishedAt],
+  );
+  return row.id;
 }
 
-export const updateTitle = (id: number, title: string) =>
-  db.prepare('UPDATE vivas SET title = ? WHERE id = ?').run(title, id);
+export const updateTitle = (id: number, title: string) => run('UPDATE vivas SET title = $1 WHERE id = $2', [title, id]);
 
 // published_at is kept from the first publish.
 export const setVivaStatus = (id: number, status: VivaStatus, publishedAt: string | null) =>
-  db
-    .prepare('UPDATE vivas SET status = ?, published_at = COALESCE(published_at, ?) WHERE id = ?')
-    .run(status, publishedAt, id);
+  run('UPDATE vivas SET status = $1, published_at = COALESCE(published_at, $2) WHERE id = $3', [status, publishedAt, id]);
 
-export const deleteViva = (id: number) => db.prepare('DELETE FROM vivas WHERE id = ?').run(id);
+export const deleteViva = (id: number) => run('DELETE FROM vivas WHERE id = $1', [id]);
 
 export const questionRows = (vivaId: number) =>
-  db
-    .prepare('SELECT id, data FROM viva_questions WHERE viva_id = ? ORDER BY position, id')
-    .all(vivaId) as unknown as QuestionRow[];
+  query<QuestionRow>('SELECT id, data FROM viva_questions WHERE viva_id = $1 ORDER BY position, id', [vivaId]);
 
 // Replaces the whole list. A question keeps its id when the teacher sends that id back, so attempt answers still match.
-export function replaceQuestions(vivaId: number, questions: (DraftQuestion & { id?: number })[]) {
-  const existing = new Set(questionRows(vivaId).map((r) => r.id));
-  db.prepare('DELETE FROM viva_questions WHERE viva_id = ?').run(vivaId);
-  const insert = db.prepare('INSERT INTO viva_questions (id, viva_id, position, data) VALUES (?, ?, ?, ?)');
+// New questions take their ids from the sequence, so they never collide with the kept ones.
+export async function replaceQuestions(vivaId: number, questions: (DraftQuestion & { id?: number })[]) {
+  const existing = new Set((await questionRows(vivaId)).map((r) => r.id));
+  await run('DELETE FROM viva_questions WHERE viva_id = $1', [vivaId]);
   const kept = new Set<number>();
-  questions.forEach((q, position) => {
+  for (const [position, q] of questions.entries()) {
     const { id, ...rest } = q;
     const keep = id !== undefined && existing.has(id) && !kept.has(id) ? id : null;
     if (keep !== null) kept.add(keep);
-    insert.run(keep, vivaId, position, JSON.stringify(rest));
-  });
+    await run('INSERT INTO viva_questions (id, viva_id, position, data) VALUES ($1, $2, $3, $4)', [
+      keep,
+      vivaId,
+      position,
+      JSON.stringify(rest),
+    ]);
+  }
 }
 
 export const attemptFor = (vivaId: number, userId: string) =>
-  db.prepare('SELECT * FROM viva_attempts WHERE viva_id = ? AND user_id = ?').get(vivaId, userId) as
-    | AttemptRow
-    | undefined;
+  one<AttemptRow>('SELECT * FROM viva_attempts WHERE viva_id = $1 AND user_id = $2', [vivaId, userId]);
 
-export const attemptById = (id: number) =>
-  db.prepare('SELECT * FROM viva_attempts WHERE id = ?').get(id) as AttemptRow | undefined;
+export const attemptById = (id: number) => one<AttemptRow>('SELECT * FROM viva_attempts WHERE id = $1', [id]);
 
 export const attemptsForViva = (vivaId: number) =>
-  db
-    .prepare(
-      `SELECT a.*, u.name AS student_name, u.email AS student_email
-       FROM viva_attempts a JOIN users u ON u.id = a.user_id
-       WHERE a.viva_id = ? ORDER BY a.started_at DESC, a.id DESC`,
-    )
-    .all(vivaId) as unknown as AttemptRow[];
+  query<AttemptRow>(
+    `SELECT a.*, u.name AS student_name, u.email AS student_email
+     FROM viva_attempts a JOIN users u ON u.id = a.user_id
+     WHERE a.viva_id = $1 ORDER BY a.started_at DESC, a.id DESC`,
+    [vivaId],
+  );
 
 export const insertAttempt = (vivaId: number, userId: string, startedAt: string) =>
-  db
-    .prepare(`INSERT OR IGNORE INTO viva_attempts (viva_id, user_id, status, started_at, pending_review) VALUES (?, ?, 'in_progress', ?, 0)`)
-    .run(vivaId, userId, startedAt);
+  run(
+    `INSERT INTO viva_attempts (viva_id, user_id, status, started_at, pending_review)
+     VALUES ($1, $2, 'in_progress', $3, 0) ON CONFLICT (viva_id, user_id) DO NOTHING`,
+    [vivaId, userId, startedAt],
+  );
+
+export const setTranscript = (attemptId: number, transcript: string) =>
+  run('UPDATE viva_attempts SET transcript = $1 WHERE id = $2', [transcript, attemptId]);
 
 export const finishAttempt = (id: number, submittedAt: string, score: number, pending: boolean) =>
-  db
-    .prepare(`UPDATE viva_attempts SET status = 'submitted', submitted_at = ?, score = ?, pending_review = ? WHERE id = ?`)
-    .run(submittedAt, score, pending ? 1 : 0, id);
+  run(`UPDATE viva_attempts SET status = 'submitted', submitted_at = $1, score = $2, pending_review = $3 WHERE id = $4`, [
+    submittedAt,
+    score,
+    pending ? 1 : 0,
+    id,
+  ]);
 
 export const setAttemptScore = (id: number, score: number, pending: boolean) =>
-  db
-    .prepare('UPDATE viva_attempts SET score = ?, pending_review = ? WHERE id = ?')
-    .run(score, pending ? 1 : 0, id);
+  run('UPDATE viva_attempts SET score = $1, pending_review = $2 WHERE id = $3', [score, pending ? 1 : 0, id]);
 
 export const answerRows = (attemptId: number) =>
-  db.prepare('SELECT * FROM viva_answers WHERE attempt_id = ?').all(attemptId) as unknown as AnswerRow[];
+  query<AnswerRow>('SELECT * FROM viva_answers WHERE attempt_id = $1', [attemptId]);
 
 // While in progress. Grades are not touched.
 export const upsertAnswer = (attemptId: number, questionId: number, answer: string) =>
-  db
-    .prepare(
-      `INSERT INTO viva_answers (attempt_id, question_id, answer) VALUES (?, ?, ?)
-       ON CONFLICT (attempt_id, question_id) DO UPDATE SET answer = excluded.answer`,
-    )
-    .run(attemptId, questionId, answer);
+  run(
+    `INSERT INTO viva_answers (attempt_id, question_id, answer) VALUES ($1, $2, $3)
+     ON CONFLICT (attempt_id, question_id) DO UPDATE SET answer = EXCLUDED.answer`,
+    [attemptId, questionId, answer],
+  );
 
 // Submit: stores the answer with its grade.
 export const writeGrade = (
@@ -173,19 +161,17 @@ export const writeGrade = (
   correct: boolean | null,
   score: number | null,
 ) =>
-  db
-    .prepare(
-      `INSERT INTO viva_answers (attempt_id, question_id, answer, correct, score) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (attempt_id, question_id) DO UPDATE SET
-         answer = excluded.answer, correct = excluded.correct, score = excluded.score`,
-    )
-    .run(attemptId, questionId, answer, correct === null ? null : correct ? 1 : 0, score);
+  run(
+    `INSERT INTO viva_answers (attempt_id, question_id, answer, correct, score) VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (attempt_id, question_id) DO UPDATE SET
+       answer = EXCLUDED.answer, correct = EXCLUDED.correct, score = EXCLUDED.score`,
+    [attemptId, questionId, answer, correct === null ? null : correct ? 1 : 0, score],
+  );
 
 // Teacher grade: only the score moves.
 export const setAnswerScore = (attemptId: number, questionId: number, score: number) =>
-  db
-    .prepare(
-      `INSERT INTO viva_answers (attempt_id, question_id, score) VALUES (?, ?, ?)
-       ON CONFLICT (attempt_id, question_id) DO UPDATE SET score = excluded.score`,
-    )
-    .run(attemptId, questionId, score);
+  run(
+    `INSERT INTO viva_answers (attempt_id, question_id, score) VALUES ($1, $2, $3)
+     ON CONFLICT (attempt_id, question_id) DO UPDATE SET score = EXCLUDED.score`,
+    [attemptId, questionId, score],
+  );

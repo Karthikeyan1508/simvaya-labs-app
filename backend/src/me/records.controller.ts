@@ -29,8 +29,8 @@ class ActivityDto {
 @UseGuards(AuthGuard)
 export class RecordsController {
   @Get('recordings')
-  recordings(@Req() req: AuthedRequest, @Query('experimentId') experimentId?: string) {
-    return listRecordings(req.user.id, experimentId).map((r) => ({
+  async recordings(@Req() req: AuthedRequest, @Query('experimentId') experimentId?: string) {
+    return (await listRecordings(req.user.id, experimentId)).map((r) => ({
       id: r.id,
       experimentId: r.experiment_id,
       data: JSON.parse(r.data) as Record<string, unknown>,
@@ -39,19 +39,19 @@ export class RecordsController {
   }
 
   @Post('recordings')
-  createRecording(@Req() req: AuthedRequest, @Body() dto: CreateRecordingDto) {
+  async createRecording(@Req() req: AuthedRequest, @Body() dto: CreateRecordingDto) {
     if (JSON.stringify(dto.data).length > RECORDING_LIMIT_CHARS) {
       throw new BadRequestException('Recording is too large');
     }
-    const saved = insertRecording(req.user.id, dto.experimentId, dto.data);
-    insertActivity(req.user.id, 'row_recorded', dto.experimentId);
+    const saved = await insertRecording(req.user.id, dto.experimentId, dto.data);
+    await insertActivity(req.user.id, 'row_recorded', dto.experimentId);
     return saved;
   }
 
   @Get('activities')
-  activities(@Req() req: AuthedRequest, @Query('limit') limit?: string) {
+  async activities(@Req() req: AuthedRequest, @Query('limit') limit?: string) {
     const n = Math.min(200, Math.max(1, Number(limit ?? 50) || 50));
-    return listActivities(req.user.id, n).map((a) => ({
+    return (await listActivities(req.user.id, n)).map((a) => ({
       id: a.id,
       type: a.type,
       experimentId: a.experiment_id,
@@ -60,8 +60,8 @@ export class RecordsController {
   }
 
   @Post('activities')
-  logActivity(@Req() req: AuthedRequest, @Body() dto: ActivityDto) {
-    insertActivity(req.user.id, dto.type, dto.experimentId ?? null);
+  async logActivity(@Req() req: AuthedRequest, @Body() dto: ActivityDto) {
+    await insertActivity(req.user.id, dto.type, dto.experimentId ?? null);
     return { ok: true };
   }
 }

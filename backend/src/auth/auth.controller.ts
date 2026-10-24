@@ -17,21 +17,21 @@ class LoginDto {
 export class AuthController {
   @Post('login')
   @HttpCode(200)
-  login(@Body() dto: LoginDto) {
-    const user = userByEmail(dto.email.toLowerCase());
+  async login(@Body() dto: LoginDto) {
+    const user = await userByEmail(dto.email.toLowerCase());
     if (!user || !verifyPassword(dto.password, user.password_hash)) {
       throw new UnauthorizedException('Email or password is incorrect');
     }
-    const token = createSession(user.id);
-    insertActivity(user.id, 'signed_in', null);
+    const token = await createSession(user.id);
+    await insertActivity(user.id, 'signed_in', null);
     return { token, user: toPublicUser(user) };
   }
 
   @Post('logout')
   @HttpCode(200)
   @UseGuards(AuthGuard)
-  logout(@Req() req: AuthedRequest) {
-    deleteSession(req.token);
+  async logout(@Req() req: AuthedRequest) {
+    await deleteSession(req.token);
     return { ok: true };
   }
 
@@ -44,7 +44,7 @@ export class AuthController {
   // Used by the dashboard to show how many sign-ins happened this week.
   @Get('activity-since-week')
   @UseGuards(AuthGuard)
-  weekCount(@Req() req: AuthedRequest) {
-    return { count: activitiesSince(req.user.id, new Date(Date.now() - 7 * 86_400_000).toISOString()) };
+  async weekCount(@Req() req: AuthedRequest) {
+    return { count: await activitiesSince(req.user.id, new Date(Date.now() - 7 * 86_400_000).toISOString()) };
   }
 }

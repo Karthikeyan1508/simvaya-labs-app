@@ -4,6 +4,9 @@ import type { ObservationRow } from '@/lib/types';
 // Account, academics and records. Everything here except login talks to the backend with the session token.
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+// The backend starts Google sign-in and sends the browser back to /auth/callback with a session token.
+export const googleLoginUrl = () => `${BASE}/auth/google`;
 const TOKEN_KEY = 'simvaya.token';
 
 export class ApiError extends Error {

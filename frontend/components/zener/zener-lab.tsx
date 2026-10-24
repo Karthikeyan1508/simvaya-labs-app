@@ -15,10 +15,11 @@ import type { SectionDef } from '@/lib/sections';
 import { ZENER_APPARATUS, ZENER_AIM, ZENER_OBJECTIVES, ZENER_REFERENCES, ZENER_STEPS } from '@/lib/zener/content';
 import { lineRegulation, loadCurve, loadRegulation } from '@/lib/zener/regulation';
 import { RS_OHM, solve, sweepVs, VS_MAX_V, VZ_V } from '@/lib/zener/solver';
+import { EMPTY_WIRING, type Wiring } from '@/lib/zener/wiring';
 import { cn } from '@/lib/utils';
 import type { ZenerViewName } from './zener-views';
 import type { ZenerReadings } from './zener-parts';
-import { RL_MAX, RL_MIN, ZenerSimulation } from './zener-simulation';
+import { RL_MAX, RL_MIN, type ZenerMode, ZenerSimulation } from './zener-simulation';
 import { type Observation, ZenerCalculations, ZenerGraphs, ZenerObservations, ZenerTheory } from './zener-sections';
 
 const ZENER_SECTION_IDS = [
@@ -73,6 +74,8 @@ export function ZenerLab() {
   const [view, setViewState] = useState<{ name: ZenerViewName; nonce: number }>({ name: 'iso', nonce: 0 });
   const [selected, setSelected] = useState<string | null>(null);
   const [showLabels, setShowLabels] = useState(true);
+  const [mode, setMode] = useState<ZenerMode>('simulate');
+  const [wiring, setWiring] = useState<Wiring>(EMPTY_WIRING); // kept across mode switches
   const nextId = useRef(1);
   const logged = useRef(false);
 
@@ -225,8 +228,19 @@ export function ZenerLab() {
       case 'simulation':
         return (
           <div className="space-y-6">
-            <SectionHead title="Simulation" subtitle="Read the meters as on the bench. Pick a step, a view or a part, then set the supply and the load." />
+            <SectionHead
+              title="Simulation"
+              subtitle={
+                mode === 'wire'
+                  ? 'Wire the circuit yourself. Drag parts onto the bench, join their terminals, then check your wiring.'
+                  : 'Read the meters as on the bench. Pick a step, a view or a part, then set the supply and the load.'
+              }
+            />
             <ZenerSimulation
+              mode={mode}
+              onMode={setMode}
+              wiring={wiring}
+              onWiring={setWiring}
               vs={vs}
               onVs={setVs}
               rl={rl}

@@ -13,10 +13,14 @@ import { cn } from '@/lib/utils';
 import { ZENER_PARTS } from '@/lib/zener/content';
 import type { OperatingPoint } from '@/lib/zener/solver';
 import { VS_MAX_V } from '@/lib/zener/solver';
+import type { Wiring } from '@/lib/zener/wiring';
 import { ZenerSchematic } from './zener-schematic';
 import type { ZenerReadings } from './zener-parts';
 import { ZenerScene } from './zener-scene';
+import { ZenerWireBench } from './zener-wire-bench';
 import { ZENER_VIEW_LABEL, ZENER_VIEW_NAMES, type ZenerViewName } from './zener-views';
+
+export type ZenerMode = 'simulate' | 'wire';
 
 export const RL_MIN = 100;
 export const RL_MAX = 2000;
@@ -56,6 +60,10 @@ export interface ZenerSimulationProps {
   onLabels: (v: boolean) => void;
   onRecord: () => void;
   onAutoRecord: () => void;
+  mode: ZenerMode; // Simulate: the knobs drive the bench. Wire it yourself: the student's own wires drive the meters.
+  onMode: (m: ZenerMode) => void;
+  wiring: Wiring;
+  onWiring: (w: Wiring) => void;
 }
 
 // Pelton-style simulation: the step bar, the readings as gauges, the 3D bench with its view presets, labels and
@@ -102,6 +110,20 @@ export function ZenerSimulation(p: ZenerSimulationProps) {
 
   return (
     <div ref={root} className={cn('flex flex-col gap-3', isFull && 'h-dvh overflow-y-auto bg-background p-3')}>
+      <div className="flex flex-wrap items-center gap-2">
+        {(['simulate', 'wire'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            className="btn-chip px-3 text-xs"
+            aria-pressed={p.mode === m}
+            onClick={() => p.onMode(m)}
+          >
+            {m === 'simulate' ? 'Simulate' : 'Wire it yourself'}
+          </button>
+        ))}
+      </div>
+
       <div className="glass flex items-center gap-2 rounded-lg px-2 py-2">
         <StepPicker steps={procedure} done={p.steps.map((s) => s.pass)} index={p.stepIndex} onChange={p.onStep} />
 
@@ -138,89 +160,102 @@ export function ZenerSimulation(p: ZenerSimulationProps) {
 
       <div className="grid gap-3 xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col gap-3">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            {gauges.map((g) => (
-              <ArcGauge key={g.label} label={g.label} unit={g.unit} value={p.hideValues ? 0 : g.value} max={g.max} digits={g.digits} />
-            ))}
-          </div>
-
-          <section className="glass relative h-[380px] overflow-hidden rounded-lg xl:h-[460px]">
-            <ZenerScene
-              readings={p.readings}
-              rl={p.rl}
-              regulating={Boolean(shown?.regulating)}
+          {p.mode === 'wire' ? (
+            <ZenerWireBench
+              wiring={p.wiring}
+              onWiring={p.onWiring}
+              vs={p.vs}
               switchOn={p.switchOn}
-              view={p.view}
-              highlight={highlight}
-              selected={p.selected}
-              onSelect={p.onSelect}
-              showLabels={p.showLabels}
+              rl={p.rl}
+              op={p.op}
             />
-
-            {/* HUD: status chips */}
-            <div className="pointer-events-none absolute top-3 left-3 flex flex-wrap gap-1.5">
-              <span className="num glass flex items-center gap-2 rounded-md px-2.5 py-1 text-[11px]">
-                <span className={cn('size-2 rounded-full', p.switchOn ? 'led bg-primary' : 'bg-muted-foreground/40')} />
-                {p.switchOn ? 'LIVE' : 'OFF'}
-              </span>
-              <span className="num glass rounded-md px-2.5 py-1 text-[11px]">
-                {p.rl === null ? 'No load' : `RL ${p.rl} Ω`}
-              </span>
-              <span className="num glass rounded-md px-2.5 py-1 text-[11px]">
-                Step {p.stepIndex + 1}/{p.steps.length}
-              </span>
+          ) : (
+            <>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {gauges.map((g) => (
+                <ArcGauge key={g.label} label={g.label} unit={g.unit} value={p.hideValues ? 0 : g.value} max={g.max} digits={g.digits} />
+              ))}
             </div>
 
-            {/* HUD: dock. Views on the left, labels and reset on the right. */}
-            <div className="glass absolute inset-x-3 bottom-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md px-3 py-2">
-              <div className="flex flex-wrap gap-1.5">
-                {ZENER_VIEW_NAMES.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => p.onView(v)}
-                    aria-pressed={p.view.name === v}
-                    className="btn-chip px-2.5 text-xs"
-                  >
-                    {ZENER_VIEW_LABEL[v]}
-                  </button>
-                ))}
+            <section className="glass relative h-[380px] overflow-hidden rounded-lg xl:h-[460px]">
+              <ZenerScene
+                readings={p.readings}
+                rl={p.rl}
+                regulating={Boolean(shown?.regulating)}
+                switchOn={p.switchOn}
+                view={p.view}
+                highlight={highlight}
+                selected={p.selected}
+                onSelect={p.onSelect}
+                showLabels={p.showLabels}
+              />
+
+              {/* HUD: status chips */}
+              <div className="pointer-events-none absolute top-3 left-3 flex flex-wrap gap-1.5">
+                <span className="num glass flex items-center gap-2 rounded-md px-2.5 py-1 text-[11px]">
+                  <span className={cn('size-2 rounded-full', p.switchOn ? 'led bg-primary' : 'bg-muted-foreground/40')} />
+                  {p.switchOn ? 'LIVE' : 'OFF'}
+                </span>
+                <span className="num glass rounded-md px-2.5 py-1 text-[11px]">
+                  {p.rl === null ? 'No load' : `RL ${p.rl} Ω`}
+                </span>
+                <span className="num glass rounded-md px-2.5 py-1 text-[11px]">
+                  Step {p.stepIndex + 1}/{p.steps.length}
+                </span>
               </div>
-              <div className="ml-auto flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Tag className="size-4 text-primary" />
-                  <span className="text-xs font-medium">Labels</span>
-                  <Switch checked={p.showLabels} onCheckedChange={(c) => p.onLabels(Boolean(c))} aria-label="Labels" />
+
+              {/* HUD: dock. Views on the left, labels and reset on the right. */}
+              <div className="glass absolute inset-x-3 bottom-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md px-3 py-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {ZENER_VIEW_NAMES.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => p.onView(v)}
+                      aria-pressed={p.view.name === v}
+                      className="btn-chip px-2.5 text-xs"
+                    >
+                      {ZENER_VIEW_LABEL[v]}
+                    </button>
+                  ))}
                 </div>
-                <Button size="sm" variant="outline" onClick={() => p.onView('iso')}>
-                  <RotateCcw /> Reset view
-                </Button>
-              </div>
-            </div>
-          </section>
-
-          <Card className="glass gap-0 py-0 ring-0">
-            <CardContent className="py-4 text-sm">
-              {part ? (
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="font-medium">{part.label}</p>
-                    <Button size="sm" variant="ghost" onClick={() => p.onSelect(null)}>
-                      Clear
-                    </Button>
+                <div className="ml-auto flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Tag className="size-4 text-primary" />
+                    <span className="text-xs font-medium">Labels</span>
+                    <Switch checked={p.showLabels} onCheckedChange={(c) => p.onLabels(Boolean(c))} aria-label="Labels" />
                   </div>
-                  <p className="text-muted-foreground">{part.description}</p>
-                  <ul className="num list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
-                    {part.specs.map((s) => (
-                      <li key={s}>{s}</li>
-                    ))}
-                  </ul>
+                  <Button size="sm" variant="outline" onClick={() => p.onView('iso')}>
+                    <RotateCcw /> Reset view
+                  </Button>
                 </div>
-              ) : (
-                <p className="text-muted-foreground">Click a part on the bench, or its label, to see what it does.</p>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            </section>
+
+            <Card className="glass gap-0 py-0 ring-0">
+              <CardContent className="py-4 text-sm">
+                {part ? (
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium">{part.label}</p>
+                      <Button size="sm" variant="ghost" onClick={() => p.onSelect(null)}>
+                        Clear
+                      </Button>
+                    </div>
+                    <p className="text-muted-foreground">{part.description}</p>
+                    <ul className="num list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
+                      {part.specs.map((s) => (
+                        <li key={s}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">Click a part on the bench, or its label, to see what it does.</p>
+                )}
+              </CardContent>
+            </Card>
+            </>
+          )}
         </div>
 
         <Card className="glass h-fit gap-0 overflow-hidden py-0 ring-0">

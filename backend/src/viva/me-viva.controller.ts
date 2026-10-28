@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard, type AuthedRequest } from '../auth/auth.guard';
+import { RateLimit, RateLimitGuard } from '../http/rate-limit.guard';
 import {
   abandonViva,
   createSelfAssessment,
@@ -15,7 +16,7 @@ import { AnswerDto, SelfAssessmentDto, SpokenAnswerDto, TranscriptDto } from './
 
 // Student routes. Each student sees only the self-assessments they made. Answer keys only appear after submit.
 @Controller('me/vivas')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RateLimitGuard)
 export class MeVivaController {
   @Get()
   list(@Req() req: AuthedRequest) {
@@ -24,6 +25,7 @@ export class MeVivaController {
 
   // Generates the questions (AgenticOrg, then Groq, then templates) and saves them as a published viva the student owns.
   @Post('self-assessments')
+  @RateLimit('self-assessment', { limit: 5, windowMs: 600_000 }, { limit: 20, windowMs: 86_400_000 })
   create(@Req() req: AuthedRequest, @Body() dto: SelfAssessmentDto) {
     return createSelfAssessment(dto.experimentId, req.user.id);
   }

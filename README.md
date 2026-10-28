@@ -183,6 +183,7 @@ Run them with the commands above. The voice tests do not start a live ElevenLabs
 - **Lab content is duplicated** for Zener and sorting between the frontend and `backend/src/experiments/*`. Keep them in step when the text changes.
 - **Dashboard pages** `/dashboard/recordings` and `/dashboard/scores` still load by direct URL. They are removed from the navigation.
 - **Teacher legacy:** the `vivas.teacher_id` column name is kept on purpose. Renaming it needs a migration on the live database.
+- **Rate limits:** per signed-in user, `POST /voice/speak` allows 40 a minute and 400 an hour, `GET /voice/signed-url` 10 a minute, and starting a self-assessment 5 per 10 minutes and 20 a day. Over the limit the API returns 429 with `Retry-After`. Counts are in memory, so each API instance has its own budget and a restart resets it.
 - **Marking:** explain answers depend on Groq. Without `GROQ_API_KEY` they stay pending review.
 - **Mobile layouts** for the newest sections (oral self-assessment on lab pages) were not checked on every device.
 

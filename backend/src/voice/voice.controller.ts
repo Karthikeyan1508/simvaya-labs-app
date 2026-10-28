@@ -12,6 +12,7 @@ import {
 import { IsString, Length } from 'class-validator';
 import type { Response } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
+import { RateLimit, RateLimitGuard } from '../http/rate-limit.guard';
 
 class SpeakDto {
   @IsString()
@@ -48,9 +49,10 @@ async function voiceId(key: string, agentId: string): Promise<string> {
 
 // The ElevenLabs key stays here. The browser only receives a signed session URL, or audio for one reply.
 @Controller('voice')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RateLimitGuard)
 export class VoiceController {
   @Get('signed-url')
+  @RateLimit('signed-url', { limit: 10, windowMs: 60_000 })
   async signedUrl() {
     const { key, agentId } = config();
 
@@ -70,6 +72,7 @@ export class VoiceController {
 
   // Text in, spoken audio out. The student types or dictates the question; only the reply is spoken.
   @Post('speak')
+  @RateLimit('speak', { limit: 40, windowMs: 60_000 }, { limit: 400, windowMs: 3_600_000 })
   @HttpCode(200)
   async speak(@Body() dto: SpeakDto, @Res() out: Response) {
     const { key, agentId } = config();

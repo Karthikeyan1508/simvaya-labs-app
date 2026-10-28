@@ -19,7 +19,7 @@ import {
 } from '@/lib/viva';
 import { OralInterview } from './oral-interview';
 
-// The oral viva: the examiner asks by voice, the student answers by voice, and the transcript is kept with the marks.
+// The oral viva: the examiner is spoken, the student dictates or types, and the transcript is kept with the marks.
 // Typed answers are not offered for vivas. With onExit (the experiment page) there is no link to the viva list.
 export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void }) {
   const vivaId = Number(id);
@@ -90,10 +90,10 @@ export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void })
             <p className="text-sm text-muted-foreground">{EXPERIMENT_TITLES[viva.experimentId] ?? viva.experimentId}</p>
             <h1 className="text-3xl font-semibold tracking-[-0.025em]">{viva.title}</h1>
             <p className="text-[15px] leading-relaxed text-muted-foreground">
-              Oral viva: {n} questions, {viva.maxScore} marks in total. The examiner asks each question out loud and you
-              answer out loud. Your answers are recorded as a transcript for review.
+              Oral viva: {n} questions, {viva.maxScore} marks in total. The examiner reads each question aloud and you
+              answer by dictating with Wispr Flow or typing. Your answers are recorded as a transcript for review.
             </p>
-            <p className="text-sm text-muted-foreground">Allow the microphone when asked. Use headphones if you can.</p>
+            <p className="text-sm text-muted-foreground">No microphone is needed. Dictate with Wispr Flow, or type.</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button onClick={begin} disabled={busy}>
@@ -204,7 +204,7 @@ export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void })
         <p className="text-sm text-muted-foreground">{viva.title}</p>
         <h1 className="text-2xl font-semibold tracking-[-0.02em]">Oral viva</h1>
         <p className="text-sm text-muted-foreground">
-          Answer out loud. Your answers are saved as you speak. When the examiner has finished, the interview is submitted.
+          Dictate or type your answers. They are saved as you send them. When the examiner has finished, the interview is submitted.
         </p>
       </div>
       <OralInterview vivaId={vivaId} title={viva.title} questions={questions} parts={parts} onDone={reload} />

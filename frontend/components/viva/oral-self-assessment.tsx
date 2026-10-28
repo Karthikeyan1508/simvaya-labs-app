@@ -47,7 +47,7 @@ export function OralSelfAssessment({ experimentId }: { experimentId: string }) {
     <div className="space-y-8">
       <SectionHead
         title="Oral self-assessment"
-        subtitle="Answer the examiner out loud about this lab. Your score and feedback appear here when you finish."
+        subtitle="Answer the examiner about this lab, by dictation or typing. Your score and feedback appear here when you finish."
       />
 
       {error && <p className="text-sm text-destructive">{error}</p>}

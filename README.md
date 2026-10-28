@@ -22,8 +22,8 @@ Each lab has the same sections where relevant: Aim, Theory, Procedure, Simulatio
 ### Features
 
 - **Simulation.** Each lab runs its own model in the browser (Three.js for 3D, SVG for circuit diagrams).
-- **Voice assistant.** A floating assistant speaks with an ElevenLabs agent. Its tools change the lab state (for example, turn the pump on, highlight a part, go to a procedure step). On every lab the same 12 tool names are used, mapped to that lab's own controls. The assistant lights up each part it names while it explains.
-- **Oral self-assessment.** A student starts a self-assessment on a lab page. The app generates 8 questions from that lab's content, the student answers aloud in an ElevenLabs interview, and each explain answer is marked by Groq against a model answer. The result shows score, verdict, model answer, feedback and transcript.
+- **Voice assistant (Wispr Flow in, speech out).** A floating assistant talks with an ElevenLabs agent in a text-only session. The student's side is the message box: dictate with Wispr Flow (or type) and press Enter. No microphone is used. Only the assistant's replies are spoken, through `POST /voice/speak`, in the agent's own voice. Its tools change the lab state (for example, turn the pump on, highlight a part, go to a procedure step). On every lab the same 12 tool names are used, mapped to that lab's own controls. The assistant lights up each part it names while it explains.
+- **Oral self-assessment.** A student starts a self-assessment on a lab page. The app generates 8 questions from that lab's content, the examiner's questions are spoken and the student answers by dictating or typing, and each explain answer is marked by Groq against a model answer. The result shows score, verdict, model answer, feedback and transcript.
 - **Dashboard.** Shows experiments performed, activity this week, and finished vivas with transcript and feedback.
 - **Accounts.** Google sign-in through Firebase (any Google account can sign up). A password login exists for accounts created with one.
 
@@ -85,6 +85,7 @@ Set these in `backend/.env` for local work and in the Render dashboard for each 
 | `AGENTICORG_VIVA_AGENT_ID` | no | AgenticOrg agent UUID. |
 | `ELEVENLABS_API_KEY` | for voice | Signed URL for the ElevenLabs agent. |
 | `ELEVENLABS_AGENT_ID` | for voice | ElevenLabs agent id. |
+| `ELEVENLABS_VOICE_ID` | no | Voice for spoken replies. Defaults to the voice set on the agent. |
 | `SEED_DEMO_ACCOUNTS` | no | Set to `true` locally to create the demo student `student@simvaya.lab`. Off by default. |
 | `PORT` | no | Defaults to 3001. |
 

@@ -1,17 +1,20 @@
 'use client';
 
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
-import { AudioLines, Mic, PhoneOff } from 'lucide-react';
+import { AudioLines, MessageSquareText, PhoneOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { MessageBox } from '@/components/voice/message-box';
 import type { ComponentInfo } from '@/lib/types';
 import { fetchSignedUrl } from '@/lib/voice-api';
+import { createSpeaker, type Speaker } from '@/lib/voice-speaker';
 import { firstMessageFor, interviewPrompt, spokenPayload } from '@/lib/viva-oral';
 import { errorMessage, saveSpokenAnswer, saveTranscript, submitViva, type StudentQuestion, type TranscriptLine } from '@/lib/viva';
 import { cn } from '@/lib/utils';
 
-// Oral viva. The examiner asks each question by voice, the student answers by voice, and the answers are saved as
-// they are spoken. There is no typed answer. The whole conversation is kept as a transcript with the attempt.
+// Oral viva. The examiner's questions are spoken. The student answers by dictating into the message box with
+// Wispr Flow (typing works too), and each answer is saved as it is given. The whole conversation is kept as a
+// transcript with the attempt.
 export function OralInterview({
   vivaId,
   title,
@@ -44,15 +47,21 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
   // finish is read through a ref, because the conversation callbacks are fixed when the session starts.
   const finishRef = useRef<() => Promise<void>>(async () => undefined);
 
-  const { startSession, endSession, status, mode } = useConversation({
+  const [speaking, setSpeaking] = useState(false);
+  const speaker = useRef<Speaker | null>(null);
+  if (!speaker.current) speaker.current = createSpeaker(setSpeaking);
+
+  const addLine = (role: TranscriptLine['role'], text: string) => {
+    linesRef.current = [...linesRef.current, { role, text, at: new Date().toISOString() }];
+    setLines(linesRef.current);
+  };
+
+  const { startSession, endSession, sendUserMessage, status } = useConversation({
     onMessage: ({ message, role }) => {
-      const line: TranscriptLine = {
-        role: role === 'user' ? 'student' : 'examiner',
-        text: message,
-        at: new Date().toISOString(),
-      };
-      linesRef.current = [...linesRef.current, line];
-      setLines(linesRef.current);
+      // The student's lines are added when they are sent. Only the examiner is handled here, and it is spoken.
+      if (role === 'user') return;
+      addLine('examiner', message);
+      speaker.current?.speak(message);
     },
     onDisconnect: () => {
       // The call dropped or the agent ended it: save what was said and submit, unless we already did.
@@ -70,6 +79,7 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
   const finish = async () => {
     if (finished.current) return;
     finished.current = true;
+    speaker.current?.stop();
     setPhase('saving');
     setError('');
     try {
@@ -102,6 +112,7 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
       await startSession({
         signedUrl,
         connectionType: 'websocket',
+        textOnly: true, // no microphone: the examiner is spoken by the app, the student's answers are typed or dictated
         overrides: {
           agent: {
             firstMessage: firstMessageFor(title, questions.length),
@@ -131,23 +142,27 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
     }
   };
 
+  const send = (text: string) => {
+    addLine('student', text);
+    sendUserMessage(text);
+  };
+
   const live = phase === 'live';
-  const speaking = live && mode === 'speaking';
   const connected = status === 'connected';
 
   return (
     <div className="space-y-5">
       <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-lg p-4">
         <div className="flex items-center gap-3">
-          {speaking ? (
+          {live && speaking ? (
             <AudioLines className="size-5 text-primary" />
           ) : (
             <span className={cn('size-2.5 rounded-full', live && connected ? 'led bg-primary' : 'bg-muted-foreground/40')} />
           )}
           <p className="text-sm">
-            {phase === 'ready' && 'Ready when you are. The examiner will speak first.'}
+            {phase === 'ready' && 'Ready when you are. The examiner will ask the first question aloud.'}
             {phase === 'connecting' && 'Connecting to the examiner…'}
-            {live && (speaking ? 'The examiner is speaking' : 'Listening. Answer out loud.')}
+            {live && (speaking ? 'The examiner is speaking' : 'Your turn. Dictate your answer with Wispr Flow, or type it.')}
             {phase === 'saving' && 'Saving your interview…'}
             {phase === 'done' && 'Interview submitted.'}
             {phase === 'error' && 'The interview is not running.'}
@@ -155,7 +170,7 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
         </div>
         {phase === 'ready' && (
           <Button onClick={start}>
-            <Mic /> Start the interview
+            <MessageSquareText /> Start the interview
           </Button>
         )}
         {live && (
@@ -169,6 +184,8 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
           </Button>
         )}
       </div>
+
+      {live && <MessageBox onSend={send} disabled={!connected} />}
 
       {notice && live && <p className="text-xs text-muted-foreground">Saved: {notice}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}

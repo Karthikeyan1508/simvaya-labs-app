@@ -1,12 +1,14 @@
 'use client';
 
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
-import { AlertTriangle, AudioLines, Mic, PhoneOff, X } from 'lucide-react';
+import { AlertTriangle, AudioLines, MessageSquareText, PhoneOff, Volume2, VolumeX, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { MessageBox } from '@/components/voice/message-box';
 import { ApiError } from '@/lib/account';
 import { cn } from '@/lib/utils';
 import { fetchSignedUrl } from '@/lib/voice-api';
+import { createSpeaker, type Speaker } from '@/lib/voice-speaker';
 import { partsMentioned } from '@/lib/voice-parts';
 import type { VoiceLabBridge, VoiceToolFactory, VoiceTools } from '@/lib/voice-lab';
 
@@ -15,7 +17,7 @@ type State = 'connecting' | 'listening' | 'speaking' | 'error' | 'ended';
 
 const LABEL: Record<State, string> = {
   connecting: 'Connecting',
-  listening: 'Listening',
+  listening: 'Ready for your message',
   speaking: 'Speaking',
   error: 'Not connected',
   ended: 'Conversation ended',
@@ -29,8 +31,6 @@ function startErrorText(e: unknown): string {
 }
 
 function sessionErrorText(message: string | undefined): string {
-  if (message && /permission|notallowed|denied|dismiss/i.test(message))
-    return 'Microphone access is blocked. Allow the microphone for this site in your browser settings, then try again.';
   return `The conversation stopped${message ? `: ${message}` : '.'}`;
 }
 
@@ -71,17 +71,33 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
   // Bumped on every start and end, so a signed URL that arrives after End is ignored.
   const attempt = useRef(0);
 
-  const { startSession, endSession, status, message, mode } = useConversation({
+  // The student writes (typed, or dictated with Wispr Flow) and only the assistant's replies are spoken.
+  const [speaking, setSpeaking] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const speaker = useRef<Speaker | null>(null);
+  if (!speaker.current) speaker.current = createSpeaker(setSpeaking);
+
+  const addLine = (role: Line['role'], text: string) => {
+    const id = ++lineId.current;
+    setLines((prev) => [...prev.slice(-5), { id, role, text }]);
+  };
+
+  const { startSession, endSession, sendUserMessage, status, message } = useConversation({
     onMessage: ({ message: text, role }) => {
-      const id = ++lineId.current;
-      setLines((prev) => [...prev.slice(-5), { id, role, text }]);
+      // The student's own lines are added when they are sent, so only the assistant is handled here.
+      if (role !== 'agent') return;
+      addLine('agent', text);
+      speaker.current?.speak(text);
       // What the assistant names is lit on the rig, even when the model does not call the highlight tool.
-      if (role === 'agent') {
-        const ids = partsMentioned(latest.current.parts, text);
-        if (ids.length) latest.current.setVoiceHighlight(ids);
-      }
+      const ids = partsMentioned(latest.current.parts, text);
+      if (ids.length) latest.current.setVoiceHighlight(ids);
     },
   });
+
+  const send = (text: string) => {
+    addLine('user', text);
+    sendUserMessage(text);
+  };
 
   // Dev only: lets a developer drive the tools from the browser console, e.g. simvayaVoiceTools.explode_model({ amount: 1 }).
   useEffect(() => {
@@ -98,7 +114,9 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
     fetching || status === 'connecting'
       ? 'connecting'
       : status === 'connected'
-        ? mode
+        ? speaking
+          ? 'speaking'
+          : 'listening'
         : status === 'error' || startError
           ? 'error'
           : 'ended';
@@ -119,6 +137,7 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
       startSession({
         signedUrl,
         connectionType: 'websocket',
+        textOnly: true, // no microphone: the replies are spoken by the app instead
         overrides: { agent: { firstMessage, prompt: { prompt } } },
         clientTools: tools,
       });
@@ -133,6 +152,7 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
     attempt.current++;
     setFetching(false);
     endSession();
+    speaker.current?.stop();
     latest.current.setVoiceHighlight(null);
     setOpen(false);
   };
@@ -149,7 +169,20 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
           <header className="flex items-center gap-2">
             <Indicator state={state} />
             <span className="text-sm font-medium">{LABEL[state]}</span>
-            <Button size="icon-sm" variant="ghost" className="ml-auto" aria-label="Close assistant" onClick={() => setOpen(false)}>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="ml-auto"
+              aria-label={muted ? 'Turn spoken replies on' : 'Turn spoken replies off'}
+              aria-pressed={muted}
+              onClick={() => {
+                speaker.current?.setMuted(!muted);
+                setMuted(!muted);
+              }}
+            >
+              {muted ? <VolumeX /> : <Volume2 />}
+            </Button>
+            <Button size="icon-sm" variant="ghost" aria-label="Close assistant" onClick={() => setOpen(false)}>
               <X />
             </Button>
           </header>
@@ -170,6 +203,12 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
             ))}
           </div>
 
+          {status === 'connected' && (
+            <div className="mt-3">
+              <MessageBox onSend={send} />
+            </div>
+          )}
+
           {live && (
             <footer className="mt-4 flex justify-end">
               <Button variant="outline" size="sm" onClick={end}>
@@ -182,7 +221,7 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
       )}
 
       <Button onClick={onButton} disabled={!live && !lab.prompt} aria-expanded={open} className="shadow-lg">
-        <Mic />
+        <MessageSquareText />
         {live ? (open ? 'Hide assistant' : 'Show assistant') : 'Ask the assistant'}
       </Button>
     </div>

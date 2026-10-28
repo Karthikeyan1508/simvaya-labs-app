@@ -4,6 +4,26 @@ import { KIND_LABEL } from '@/lib/viva';
 
 // Prompt and tool helpers for the oral viva. No answer keys go to the agent: the student view has none.
 
+// The agent also owns the lab tools. The interview has no lab to drive, but a call to a tool the page did not register
+// ends the whole session, so every lab tool gets a stand-in that answers with a short message.
+const LAB_TOOLS = [
+  'explode_model',
+  'reassemble_model',
+  'focus_part',
+  'highlight_parts',
+  'clear_highlight',
+  'set_view',
+  'explain_part',
+  'read_readings',
+  'set_pump',
+  'set_nozzle',
+  'go_to_step',
+  'explain_topic',
+  'set_control',
+];
+export const labToolStandIns = (): Record<string, () => string> =>
+  Object.fromEntries(LAB_TOOLS.map((name) => [name, () => 'There is no lab on screen during the viva. Carry on with the questions.']));
+
 export const firstMessageFor = (title: string, count: number) =>
   `Hello, I'm your examiner for ${title}. There are ${count} questions. Are you ready to begin?`;
 
@@ -39,6 +59,7 @@ export function interviewPrompt(title: string, questions: StudentQuestion[], par
     'How to run the interview:',
     '- Ask the questions in order, one at a time, by number. Read each question naturally.',
     '- Read the full answer, then call save_viva_answer with question_number and the answer in the field the question names. Then give one short acknowledgement and ask the next question.',
+    '- For multiple-choice and formula questions the options are shown on the student\'s screen. They choose one, and their message names it ("I choose option 1: ..."). Say which option you heard, ask one short follow-up such as why they chose it, listen to the reply, then save the option index. Never say whether the choice is right.',
     '- If an answer is vague or missing, ask one short follow-up on the same question. If it is still unclear, save what you have and move on.',
     '- Never say whether an answer is right or wrong and never give the correct answer. The answers are reviewed after the interview.',
     '- After the last answer, or when the student asks to stop, call finish_viva and thank the student.',

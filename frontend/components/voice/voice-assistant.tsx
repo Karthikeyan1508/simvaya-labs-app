@@ -4,6 +4,7 @@ import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { AlertTriangle, AudioLines, MessageSquareText, PhoneOff, Volume2, VolumeX, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ChatLog } from '@/components/voice/chat';
 import { MessageBox } from '@/components/voice/message-box';
 import { ApiError } from '@/lib/account';
 import { cn } from '@/lib/utils';
@@ -194,14 +195,16 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
             </p>
           )}
 
-          <div aria-live="polite" className="mt-3 max-h-60 space-y-2 overflow-y-auto text-sm">
-            {lines.map((l) => (
-              <p key={l.id} className={cn(l.role === 'agent' ? 'text-foreground' : 'text-muted-foreground')}>
-                <span className="font-medium">{l.role === 'agent' ? 'Assistant' : 'You'}: </span>
-                {l.text}
-              </p>
-            ))}
-          </div>
+          <ChatLog
+            messages={lines.map((l) => ({
+              id: l.id,
+              from: l.role === 'agent' ? 'them' : 'you',
+              name: l.role === 'agent' ? 'Assistant' : 'You',
+              text: l.text,
+            }))}
+            empty="Say hello to the assistant."
+            className="mt-3 max-h-64 rounded-md bg-muted/30"
+          />
 
           {status === 'connected' && (
             <div className="mt-3">

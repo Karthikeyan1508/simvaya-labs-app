@@ -25,7 +25,7 @@ export interface SectionDef<T extends string> {
 export const ORAL_SECTION: SectionDef<'oral'> = {
   id: 'oral',
   label: 'Oral self-assessment',
-  hint: 'Answer out loud',
+  hint: 'Dictate your answers',
   icon: Mic,
 };
 
@@ -52,7 +52,7 @@ export const SECTIONS: SectionDef<SectionId>[] = [
   { id: 'simulation', label: 'Simulation', hint: 'Operate the 3D rig', icon: Box },
   { id: 'calculations', label: 'Calculations', hint: 'Tables, formulas, graphs', icon: Calculator },
   { id: 'posttest', label: 'Posttest', hint: 'Check your learning', icon: GraduationCap },
-  { id: 'oral', label: 'Oral self-assessment', hint: 'Answer out loud', icon: Mic },
+  { id: 'oral', label: 'Oral self-assessment', hint: 'Dictate your answers', icon: Mic },
   { id: 'references', label: 'References', hint: 'Sources', icon: Library },
   { id: 'feedback', label: 'Feedback', hint: 'Tell us what you think', icon: MessageSquare },
 ];

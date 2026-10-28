@@ -4,11 +4,12 @@ import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { AudioLines, MessageSquareText, PhoneOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ChatLog, type ChatMessage } from '@/components/voice/chat';
 import { MessageBox } from '@/components/voice/message-box';
 import type { ComponentInfo } from '@/lib/types';
 import { fetchSignedUrl } from '@/lib/voice-api';
 import { createSpeaker, type Speaker } from '@/lib/voice-speaker';
-import { firstMessageFor, interviewPrompt, spokenPayload } from '@/lib/viva-oral';
+import { firstMessageFor, interviewPrompt, labToolStandIns, spokenPayload } from '@/lib/viva-oral';
 import { errorMessage, saveSpokenAnswer, saveTranscript, submitViva, type StudentQuestion, type TranscriptLine } from '@/lib/viva';
 import { cn } from '@/lib/utils';
 
@@ -40,9 +41,12 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  // The highest question number the examiner has saved. The question on screen is the next one.
+  const [answered, setAnswered] = useState(0);
+  const [picked, setPicked] = useState<number | null>(null);
+  const [focusTick, setFocusTick] = useState(0); // bumped after a click on a choice, so the dictation box gets focus back
   const linesRef = useRef<TranscriptLine[]>([]);
   const finished = useRef(false);
-  const transcriptEnd = useRef<HTMLLIElement>(null);
 
   // finish is read through a ref, because the conversation callbacks are fixed when the session starts.
   const finishRef = useRef<() => Promise<void>>(async () => undefined);
@@ -72,10 +76,6 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
     },
   });
 
-  useEffect(() => {
-    transcriptEnd.current?.scrollIntoView({ block: 'nearest' });
-  }, [lines.length]);
-
   const finish = async () => {
     if (finished.current) return;
     finished.current = true;
@@ -103,6 +103,8 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
   const start = async () => {
     setError('');
     setNotice('');
+    setAnswered(0);
+    setPicked(null);
     setPhase('connecting');
     finished.current = false;
     linesRef.current = [];
@@ -120,10 +122,15 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
           },
         },
         clientTools: {
+          ...labToolStandIns(),
           save_viva_answer: async (args: Record<string, unknown>) => {
             try {
               const res = await saveSpokenAnswer(vivaId, spokenPayload(args));
               setNotice(res.message);
+              if (res.ok) {
+                setAnswered((n) => Math.max(n, Number(args.question_number) || 0));
+                setPicked(null);
+              }
               return res.message;
             } catch {
               return 'I could not save that answer. Please ask the student to repeat it.';
@@ -149,6 +156,22 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
 
   const live = phase === 'live';
   const connected = status === 'connected';
+  const current = live ? questions[answered] : undefined;
+  const choices = current && (current.kind === 'mcq' || current.kind === 'formula') ? current.options : undefined;
+
+  const chat: ChatMessage[] = lines.map((l, i) => ({
+    id: `${l.at}-${i}`,
+    from: l.role === 'examiner' ? 'them' : 'you',
+    name: l.role === 'examiner' ? 'Examiner' : 'You',
+    text: l.text,
+    at: l.at,
+  }));
+
+  const choose = (k: number) => {
+    setPicked(k);
+    setFocusTick((n) => n + 1);
+    send(`I choose option ${k}: ${choices?.[k] ?? ''}`);
+  };
 
   return (
     <div className="space-y-5">
@@ -185,27 +208,43 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
         )}
       </div>
 
-      {live && <MessageBox onSend={send} disabled={!connected} />}
-
       {notice && live && <p className="text-xs text-muted-foreground">Saved: {notice}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <section className="glass rounded-lg p-4 md:p-5">
-        <h2 className="mb-3 text-sm font-medium">Transcript</h2>
-        {lines.length === 0 ? (
-          <p className="text-sm text-muted-foreground">The conversation appears here as you speak.</p>
-        ) : (
-          <ol className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-            {lines.map((l, i) => (
-              <li key={`${l.at}-${i}`} ref={i === lines.length - 1 ? transcriptEnd : undefined} className="text-sm leading-relaxed">
-                <span className={cn('mr-2 text-xs font-medium', l.role === 'examiner' ? 'text-primary' : 'text-muted-foreground')}>
-                  {l.role === 'examiner' ? 'Examiner' : 'You'}
-                </span>
-                {l.text}
-              </li>
-            ))}
-          </ol>
+      <section aria-label="Interview chat" className="glass flex h-[min(74vh,700px)] flex-col overflow-hidden rounded-lg">
+        <ChatLog
+          messages={chat}
+          empty="The conversation appears here. The examiner speaks first."
+          className="min-h-0 flex-1"
+        />
+
+        {live && choices && (
+          <div aria-label="Choose an answer" className="space-y-2 border-t border-border/60 bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground">Question {answered + 1}: choose an answer</p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {choices.map((text, k) => (
+                <li key={k}>
+                  <Button
+                    type="button"
+                    variant={picked === k ? 'default' : 'outline'}
+                    className="h-auto w-full justify-start whitespace-normal py-2 text-left"
+                    disabled={!connected}
+                    aria-pressed={picked === k}
+                    onClick={() => choose(k)}
+                  >
+                    <span className="mr-2 font-mono text-xs">{String.fromCharCode(65 + k)}</span>
+                    {text}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
+
+        {/* Frozen at the bottom of the chat, outside the scrolling log. */}
+        <div className="border-t border-border/60 bg-background/80 p-3 backdrop-blur">
+          <MessageBox onSend={send} disabled={!live || !connected} refocusKey={focusTick} />
+        </div>
       </section>
     </div>
   );

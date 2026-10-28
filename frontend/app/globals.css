@@ -265,6 +265,16 @@ html {
 }
 
 /* Popups rise and fade in from their trigger, then settle. Closing is quicker. */
+/* The bar under the dictation box that counts down to the automatic send. */
+@keyframes autosend {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 @keyframes popup-in {
   from {
     opacity: 0;

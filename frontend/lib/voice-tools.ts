@@ -3,6 +3,7 @@ import { VIEW_LABEL } from '@/lib/lab-logic';
 import type { ExperimentDef, Readings } from '@/lib/types';
 import {
   bool,
+  controlName,
   isOneOf,
   LOADING,
   num,
@@ -167,6 +168,11 @@ export function buildVoiceTools(get: () => LabBridge): VoiceTools {
       b.showScene();
       b.setNozzleStep(step);
       return `Nozzle set to ${step} of 8.`;
+    },
+
+    set_control(p) {
+      if (controlName(p.control) !== 'nozzle_step') return 'Unknown control. This lab has nozzle_step. The student sets the dead weights on the load panel.';
+      return this.set_nozzle({ step: p.value });
     },
 
     go_to_step(p) {

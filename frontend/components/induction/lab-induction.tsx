@@ -172,6 +172,7 @@ export function LabInduction() {
     setCutaway,
     setPart: pick,
     showSimulation: () => choose('simulation'),
+    setLoad: rig.setLoad,
     goToStage: () => {
       setVoiceHighlight(null);
       choose('procedure');

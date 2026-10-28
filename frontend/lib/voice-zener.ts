@@ -3,7 +3,7 @@
 import { ZENER_VIEW_LABEL, ZENER_VIEW_NAMES, type ZenerViewName } from '../components/zener/zener-views.ts';
 import { MANUAL_NOTE, ZENER_AIM, ZENER_APPARATUS, ZENER_PARTS, ZENER_RELATIONS, ZENER_STEPS, ZENER_THEORY, ZENER_TITLE } from './zener/content.ts';
 import type { OperatingPoint } from './zener/solver.ts';
-import { bool, isOneOf, partIds, partOf, partText, str, unknownPart, whole, type VoiceLabBridge, type VoiceTools } from './voice-lab.ts';
+import { bool, controlName, isOneOf, num, partIds, partOf, partText, str, unknownPart, whole, type VoiceLabBridge, type VoiceTools } from './voice-lab.ts';
 
 export const ZENER_FIRST_MESSAGE =
   "Hello, I'm your lab assistant for the Zener diode regulator. Do you have any doubts about the apparatus or the procedure?";
@@ -15,11 +15,18 @@ export interface ZenerVoiceBridge extends VoiceLabBridge {
   switchOn: boolean;
   op: OperatingPoint | null; // the solver result for the current setting; null when the setting is not valid
   setSwitch: (on: boolean) => void;
+  setVs: (v: number) => void;
+  setRl: (ohm: number | null) => void;
   setView: (name: ZenerViewName) => void;
   setSelected: (id: string | null) => void;
   goToStep: (index: number) => void;
   showSimulation: () => void;
 }
+
+export const ZENER_CONTROLS = ['supply_voltage', 'load'] as const;
+export const ZENER_VS_MAX = 15; // matches VS_MAX_V in lib/zener/solver
+export const ZENER_RL_MIN = 100;
+export const ZENER_RL_MAX = 2000;
 
 export const ZENER_TOPICS = ['principle', 'formulas', 'sample_table', 'procedure'] as const;
 export type ZenerTopic = (typeof ZENER_TOPICS)[number];
@@ -85,7 +92,7 @@ export function buildZenerPrompt(): string {
     '- For facts about one part, call explain_part. For the principle, the formulas, the sample table or the procedure, call explain_topic. Do not make up numbers.',
     '- For current numbers, call read_readings.',
     '- set_pump opens or closes the supply switch. Use it only when the student asks.',
-    '- The supply voltage and the load resistor are set by the student with the sliders on the control desk. You cannot move them: tell the student which slider to move.',
+    `- set_control sets a main control. control supply_voltage takes 0 to ${ZENER_VS_MAX} volts. control load takes ${ZENER_RL_MIN} to ${ZENER_RL_MAX} ohms, or none for no load. Use it only when the student asks.`,
     '- explode_model, reassemble_model and set_nozzle do not apply to this bench. They answer with a short message: say it and go on.',
     '- Use they/them for the student unless they tell you otherwise.',
   ].join('\n');
@@ -157,8 +164,35 @@ export function buildZenerVoiceTools(get: () => ZenerVoiceBridge): VoiceTools {
       return `Supply switch is ${on ? 'on' : 'off'}.`;
     },
 
+    set_control(p) {
+      const b = get();
+      const c = controlName(p.control);
+      if (c === 'supply_voltage') {
+        const v = num(p.value);
+        if (v === null || v < 0 || v > ZENER_VS_MAX) return `Supply voltage must be a number from 0 to ${ZENER_VS_MAX} volts.`;
+        const vs = Math.round(v * 10) / 10;
+        b.showSimulation();
+        b.setVs(vs);
+        return `Supply voltage set to ${vs} volts.`;
+      }
+      if (c === 'load') {
+        if (['none', 'no_load', 'open'].includes(controlName(p.value))) {
+          b.showSimulation();
+          b.setRl(null);
+          return 'Load removed. The regulator has no load.';
+        }
+        const v = num(p.value);
+        if (v === null || v < ZENER_RL_MIN || v > ZENER_RL_MAX) return `Load must be from ${ZENER_RL_MIN} to ${ZENER_RL_MAX} ohms, or none.`;
+        const rl = Math.round(v / 10) * 10;
+        b.showSimulation();
+        b.setRl(rl);
+        return `Load set to ${rl} ohms.`;
+      }
+      return `Unknown control. Use one of: ${ZENER_CONTROLS.join(', ')}.`;
+    },
+
     set_nozzle() {
-      return 'This bench has no nozzle. The student sets the supply and the load with the sliders.';
+      return 'This bench has no nozzle. Use set_control for the supply voltage and the load.';
     },
 
     go_to_step(p) {

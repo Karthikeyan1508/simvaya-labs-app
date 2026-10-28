@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard, type AuthedRequest } from '../auth/auth.guard';
 import {
+  abandonViva,
   createSelfAssessment,
   listMyVivas,
   saveAnswer,
@@ -53,6 +54,11 @@ export class MeVivaController {
   @Put(':id/transcript')
   transcript(@Req() req: AuthedRequest, @Param('id', ParseIntPipe) id: number, @Body() dto: TranscriptDto) {
     return saveTranscript(id, dto.transcript, req.user.id);
+  }
+
+  @Delete(':id')
+  remove(@Req() req: AuthedRequest, @Param('id', ParseIntPipe) id: number) {
+    return abandonViva(id, req.user.id);
   }
 
   @Post(':id/submit')

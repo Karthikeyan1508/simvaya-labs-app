@@ -189,6 +189,8 @@ export function ZenerLab() {
     switchOn,
     op,
     setSwitch: setSwitchOn,
+    setVs,
+    setRl,
     setView,
     setSelected,
     goToStep: (i) => {

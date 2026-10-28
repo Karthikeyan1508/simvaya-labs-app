@@ -137,3 +137,7 @@ export const writeGrade = (
        answer = EXCLUDED.answer, correct = EXCLUDED.correct, score = EXCLUDED.score, feedback = EXCLUDED.feedback`,
     [attemptId, questionId, answer, correct === null ? null : correct ? 1 : 0, score, feedback],
   );
+
+// Children (questions, attempts, answers) are removed by ON DELETE CASCADE.
+export const deleteViva = (id: number, ownerId: string) =>
+  run('DELETE FROM vivas WHERE id = $1 AND teacher_id = $2', [id, ownerId]);

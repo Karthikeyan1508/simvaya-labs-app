@@ -1,7 +1,7 @@
 // Voice assistant for the induction motor load test: the prompt, the topics and the tool set. The tools answer the same
 // names as the Pelton ones. Where the rig has no such control, the handler says so in one short line.
 import { isComponentId, warningText, type ComponentId, type ExperimentInfo, type SimReadings } from './induction.ts';
-import { bool, isOneOf, LOADING, partIds, partOf, partText, str, unknownPart, whole, type VoiceLabBridge, type VoiceTools } from './voice-lab.ts';
+import { bool, controlName, isOneOf, num, LOADING, partIds, partOf, partText, str, unknownPart, whole, type VoiceLabBridge, type VoiceTools } from './voice-lab.ts';
 
 export const INDUCTION_FIRST_MESSAGE =
   "Hello, I'm your lab assistant for the three-phase induction motor. Do you have any doubts about the apparatus or the procedure?";
@@ -12,6 +12,10 @@ export const INDUCTION_VIEW_LABEL: Record<InductionView, string> = {
   scene: 'the 3D bench',
   circuit: 'the circuit diagram',
 };
+
+export const INDUCTION_CONTROLS = ['load_kg'] as const;
+export const INDUCTION_LOAD_MAX_KG = 40; // matches LOAD_MAX_KG in lib/induction
+export const INDUCTION_LOAD_STEP_KG = 0.5; // the smallest step of the Increase load button
 
 export const INDUCTION_TOPICS = ['principle', 'torque', 'input_power', 'efficiency', 'procedure'] as const;
 export type InductionTopic = (typeof INDUCTION_TOPICS)[number];
@@ -38,6 +42,7 @@ export interface InductionRigState {
   canStart: boolean;
   start: () => void;
   stop: () => void;
+  canLoad: boolean;
 }
 
 // The lab state and setters the induction tools use. The lab rebuilds it on every render.
@@ -51,6 +56,7 @@ export interface InductionVoiceBridge extends VoiceLabBridge {
   setPart: (id: ComponentId | null) => void;
   showSimulation: () => void;
   goToStage: (index: number) => void;
+  setLoad: (kg: number) => void;
 }
 
 // Theory paragraphs are read by position, in the order the backend content lists them.
@@ -116,7 +122,8 @@ export function buildInductionPrompt(exp: ExperimentInfo): string {
     '- For the current readings, call read_readings, and say they are simulated.',
     '- set_pump starts or stops the motor. Use it only when the student asks. A start is refused until the safety checks are acknowledged, the supply is on and the emergency stop is reset: say the reason it gives.',
     '- explode_model makes the frame see-through to show the stator and rotor. reassemble_model closes the frame again.',
-    '- set_nozzle does not apply to this rig. The student sets the load with the Increase load and Decrease load buttons, and the supply with the Supply button.',
+    `- set_control with control load_kg sets the brake load, 0 to ${INDUCTION_LOAD_MAX_KG} kg in steps of ${INDUCTION_LOAD_STEP_KG} kg. Use it only when the student asks. It is refused during the emergency stop or a pause.`,
+    '- set_nozzle does not apply to this rig. The student switches the supply with the Supply button.',
     '- Use they/them for the student unless they tell you otherwise.',
   ].join('\n');
 }
@@ -204,8 +211,20 @@ export function buildInductionVoiceTools(get: () => InductionVoiceBridge): Voice
       return 'Motor started.';
     },
 
+    set_control(p) {
+      const b = get();
+      if (controlName(p.control) !== 'load_kg') return `Unknown control. Use one of: ${INDUCTION_CONTROLS.join(', ')}.`;
+      const v = num(p.value);
+      if (v === null || v < 0 || v > INDUCTION_LOAD_MAX_KG) return `Load must be a number from 0 to ${INDUCTION_LOAD_MAX_KG} kg.`;
+      if (!b.rig.canLoad) return 'The load cannot change during the emergency stop or a pause.';
+      const kg = Math.round(v / INDUCTION_LOAD_STEP_KG) * INDUCTION_LOAD_STEP_KG;
+      b.showSimulation();
+      b.setLoad(kg);
+      return `Brake load set to ${kg} kg.`;
+    },
+
     set_nozzle() {
-      return 'This rig has no nozzle. The student sets the load on the brake drum.';
+      return 'This rig has no nozzle. Use set_control for the brake load.';
     },
 
     go_to_step(p) {

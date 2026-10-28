@@ -1,7 +1,7 @@
 // Voice assistant for the sorting visualiser: the prompt, the topics and the tool set. The lab has no 3D model and no
 // pump, so the parts are its panels, and the steps are the steps of the sort.
 import { describeStep, type Preset, type SortStep } from '../components/sorting/engine.ts';
-import { bool, isOneOf, partIds, partOf, partText, str, unknownPart, whole, type VoiceLabBridge, type VoicePart, type VoiceTools } from './voice-lab.ts';
+import { bool, controlName, isOneOf, partIds, partOf, partText, str, unknownPart, whole, type VoiceLabBridge, type VoicePart, type VoiceTools } from './voice-lab.ts';
 
 export const SORTING_TITLE = 'Sorting algorithm visualiser';
 
@@ -13,6 +13,11 @@ export const SORTING_THEORY = [
   'Quick sort is a divide-and-conquer sort. It picks one element as the pivot, moves the smaller items before it and the larger items after it, then sorts each side the same way.',
   'This visualiser uses the Lomuto partition. The last element of each segment is the pivot. A boundary index i moves right each time a smaller item is found, and that item is swapped to position i. At the end the pivot is swapped to position i + 1, where it stays.',
 ];
+
+export const SORTING_CONTROLS = ['array_size', 'preset'] as const;
+export const SORTING_PRESETS = ['random', 'nearly', 'reversed'] as const satisfies readonly Preset[];
+export const SORTING_SIZE_MIN = 6;
+export const SORTING_SIZE_MAX = 30;
 
 export const SORTING_TOPICS = ['principle', 'partition', 'cost', 'results'] as const;
 export type SortingTopic = (typeof SORTING_TOPICS)[number];
@@ -111,6 +116,7 @@ export function buildSortingPrompt(content: { aim: string; objectives: string[];
     '- The steps are the steps of the sort in the visualiser. go_to_step shows one step, and you read it back.',
     '- For facts about one part, call explain_part. For the principle, the partition, the cost or the results, call explain_topic. Do not make up numbers.',
     '- For current numbers, call read_readings.',
+    `- set_control sets the input. control array_size takes ${SORTING_SIZE_MIN} to ${SORTING_SIZE_MAX}. control preset takes ${SORTING_PRESETS.join(', ')} (nearly means nearly sorted). Either one makes a new array and restarts the sort. Use it only when the student asks.`,
     '- explode_model, reassemble_model, set_view, set_pump and set_nozzle do not apply to this lab. They answer with a short message: say it and go on.',
     '- Use they/them for the student unless they tell you otherwise.',
   ].join('\n');
@@ -123,6 +129,7 @@ export interface SortingVoiceBridge extends VoiceLabBridge {
   size: number;
   preset: Preset;
   setStep: (n: number) => void;
+  newInput: (size: number, preset: Preset) => void;
   showVisualiser: () => void;
 }
 
@@ -177,6 +184,26 @@ export function buildSortingVoiceTools(get: () => SortingVoiceBridge): VoiceTool
     set_pump(p) {
       if (bool(p.on) === null) return 'Say whether the sort is to play or pause.';
       return 'This lab has no pump. The student plays the sort with the playback bar.';
+    },
+
+    set_control(p) {
+      const b = get();
+      const c = controlName(p.control);
+      if (c === 'array_size') {
+        const n = whole(p.value, SORTING_SIZE_MIN, SORTING_SIZE_MAX);
+        if (n === null) return `Array size must be a whole number from ${SORTING_SIZE_MIN} to ${SORTING_SIZE_MAX}.`;
+        b.showVisualiser();
+        b.newInput(n, b.preset);
+        return `New array of ${n} items, ${PRESET_WORDS[b.preset]}.`;
+      }
+      if (c === 'preset') {
+        const v = controlName(p.value).replace('nearly_sorted', 'nearly');
+        if (!isOneOf(SORTING_PRESETS, v)) return `Preset must be one of: ${SORTING_PRESETS.join(', ')}.`;
+        b.showVisualiser();
+        b.newInput(b.size, v);
+        return `New ${PRESET_WORDS[v]} array of ${b.size} items.`;
+      }
+      return `Unknown control. Use one of: ${SORTING_CONTROLS.join(', ')}.`;
     },
 
     set_nozzle() {

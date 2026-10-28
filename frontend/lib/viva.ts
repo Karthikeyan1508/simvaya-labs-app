@@ -68,14 +68,15 @@ export interface MyAttemptSummary {
   status: 'in_progress' | 'submitted';
   score: number | null;
   pendingReview: boolean;
+  submittedAt?: string | null; // optional until the API sends it
 }
 
 export type MyViva = VivaSummary & { myAttempt: MyAttemptSummary | null };
 
 export interface MyVivaDetail {
-  viva: { id: number; title: string; experimentId: string; status: VivaStatus; maxScore: number };
+  viva: { id: number; title: string; experimentId: string; status: VivaStatus; maxScore: number; createdAt?: string; submittedAt?: string | null };
   questions: StudentQuestion[];
-  attempt: { id: number; status: 'in_progress' | 'submitted'; answers: { questionId: number; answer: AnswerPayload }[] } | null;
+  attempt: { id: number; status: 'in_progress' | 'submitted'; submittedAt?: string | null; answers: { questionId: number; answer: AnswerPayload }[] } | null;
   results: Result[] | null;
   transcript: TranscriptLine[];
 }
@@ -111,6 +112,7 @@ function request<T>(path: string, method = 'GET', data?: unknown): Promise<T> {
 export const listMyVivas = () => request<MyViva[]>('/me/vivas');
 export const startSelfAssessment = (experimentId: string) =>
   request<NewSelfAssessment>('/me/vivas/self-assessments', 'POST', { experimentId });
+export const abandonViva = (id: number) => request<unknown>(`/me/vivas/${id}`, 'DELETE');
 export const getMyViva = (id: number) => request<MyVivaDetail>(`/me/vivas/${id}`);
 
 // Finished attempts only, for the dashboard and the viva list. Max marks come from each viva's detail.
@@ -119,6 +121,7 @@ export interface SubmittedViva {
   title: string;
   experimentId: string;
   createdAt: string;
+  submittedAt?: string | null;
   score: number | null;
   maxScore: number;
 }
@@ -130,6 +133,7 @@ export async function listSubmittedVivas(): Promise<SubmittedViva[]> {
     title: v.title,
     experimentId: v.experimentId,
     createdAt: v.createdAt,
+    submittedAt: v.myAttempt?.submittedAt ?? details[i].attempt?.submittedAt ?? null,
     score: v.myAttempt?.score ?? null,
     maxScore: details[i].viva.maxScore,
   }));
@@ -146,6 +150,10 @@ export const saveTranscript = (id: number, transcript: TranscriptLine[]) =>
   request<{ ok: boolean }>(`/me/vivas/${id}/transcript`, 'PUT', { transcript });
 
 // Pure helpers
+
+// "28 Oct 2026, 3:05 pm" for a stored ISO time.
+export const formatWhen = (iso: string) =>
+  new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 // A student's answer as text. `labels` maps part ids to names.
 export function formatAnswer(

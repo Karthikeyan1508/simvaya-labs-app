@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { SectionHead } from '@/components/lab/section-head';
 import { Button } from '@/components/ui/button';
-import { errorMessage, listMyVivas, startSelfAssessment } from '@/lib/viva';
+import { abandonViva, errorMessage, listMyVivas, startSelfAssessment } from '@/lib/viva';
 import { VivaAttempt } from './viva-attempt';
 
 const LAB_NAMES: Record<string, string> = {
@@ -18,6 +18,7 @@ export function OralSelfAssessment({ experimentId }: { experimentId: string }) {
   const [vivaId, setVivaId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   // An unfinished viva for this lab (for example after a reload) carries on here.
   useEffect(() => {
@@ -43,6 +44,41 @@ export function OralSelfAssessment({ experimentId }: { experimentId: string }) {
     }
   };
 
+  const abandon = async () => {
+    if (vivaId === null) return;
+    setBusy(true);
+    setError('');
+    try {
+      await abandonViva(vivaId);
+      setVivaId(null);
+      setConfirming(false);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const abandonUi = (
+    <div className="flex flex-wrap items-center gap-3">
+      {confirming ? (
+        <>
+          <span className="text-sm text-muted-foreground">Delete this unfinished attempt?</span>
+          <Button variant="destructive" size="sm" onClick={abandon} disabled={busy}>
+            Yes, abandon
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirming(false)} disabled={busy}>
+            Keep it
+          </Button>
+        </>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+          Abandon and start again
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       <SectionHead
@@ -63,7 +99,7 @@ export function OralSelfAssessment({ experimentId }: { experimentId: string }) {
           </Button>
         </div>
       ) : (
-        <VivaAttempt id={String(vivaId)} onExit={() => setVivaId(null)} />
+        <VivaAttempt id={String(vivaId)} onExit={() => setVivaId(null)} unfinishedExtra={abandonUi} />
       )}
     </div>
   );

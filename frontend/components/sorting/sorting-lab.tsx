@@ -358,6 +358,7 @@ export function SortingLab() {
     size,
     preset,
     setStep: setCur,
+    newInput,
     showVisualiser: () => choose('visualiser'),
   };
 

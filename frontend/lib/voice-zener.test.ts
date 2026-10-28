@@ -22,6 +22,8 @@ function fake(over: Partial<ZenerVoiceBridge> = {}) {
     op: null,
     setVoiceHighlight: rec('setVoiceHighlight'),
     setSwitch: rec('setSwitch'),
+    setVs: rec('setVs'),
+    setRl: rec('setRl'),
     setView: rec('setView'),
     setSelected: rec('setSelected'),
     goToStep: rec('goToStep'),
@@ -125,4 +127,23 @@ test('tools with no control on this bench answer in one line and change nothing'
 test('read_readings reports the switch state when the switch is open', () => {
   const { tools } = fake({ switchOn: false });
   assert.match(tools.read_readings({}), /Every meter reads zero/);
+});
+
+test('set_control sets the supply voltage and the load, and validates', () => {
+  const { tools, calls } = fake();
+  assert.match(tools.set_control({ control: 'supply_voltage', value: '9.04' }), /9 volts/);
+  assert.match(tools.set_control({ control: 'Load', value: 470 }), /470 ohms/);
+  assert.match(tools.set_control({ control: 'load', value: 'none' }), /no load/);
+  assert.deepEqual(calls.filter((c) => c.startsWith('set')), ['setVs:[9]', 'setRl:[470]', 'setRl:[null]']);
+  calls.length = 0;
+  for (const bad of [
+    { control: 'supply_voltage', value: 16 },
+    { control: 'supply_voltage', value: 'high' },
+    { control: 'load', value: 50 },
+    { control: 'load', value: 5000 },
+    { control: 'load' },
+    { control: 'gain', value: 1 },
+    {},
+  ]) assert.match(tools.set_control(bad), /must be|Unknown control/);
+  assert.deepEqual(calls, []);
 });

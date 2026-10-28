@@ -3,14 +3,14 @@
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { EXPERIMENT_TITLES } from '@/lib/account';
-import type { SubmittedViva } from '@/lib/viva';
+import { formatWhen, type SubmittedViva } from '@/lib/viva';
 
 // Finished oral self-assessments: date, score out of max, and a link to the transcript and feedback.
 export function SubmittedVivaList({ vivas }: { vivas: SubmittedViva[] }) {
   return (
     <ul className="grid gap-3">
       {vivas.map((v) => (
-        <li key={v.id}>
+        <li key={v.id} className="min-w-0">
           <Link
             href={`/viva/${v.id}`}
             className="glass flex items-center justify-between gap-4 rounded-lg p-5 transition-colors hover:bg-foreground/[0.02]"
@@ -19,7 +19,7 @@ export function SubmittedVivaList({ vivas }: { vivas: SubmittedViva[] }) {
               <p className="truncate font-medium">{v.title}</p>
               <p className="text-sm text-muted-foreground">
                 {EXPERIMENT_TITLES[v.experimentId] ?? v.experimentId} ·{' '}
-                {new Date(v.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {v.submittedAt ? `Submitted ${formatWhen(v.submittedAt)}` : `Created ${formatWhen(v.createdAt)}`}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-4">

@@ -29,6 +29,7 @@ export function buildVoicePrompt(exp: ExperimentDef): string {
     '- For current numbers, call read_readings.',
     '- If you pulled the parts apart to explain them, call reassemble_model before you move on.',
     '- Change the pump, the nozzle or the procedure step only when the student asks.',
+    '- set_control with control nozzle_step (1 to 8) sets the nozzle. The dead weights are set by the student on the load panel.',
     '- Use they/them for the student unless they tell you otherwise.',
   ].join('\n');
 }

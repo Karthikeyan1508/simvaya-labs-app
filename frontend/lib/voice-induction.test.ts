@@ -75,6 +75,7 @@ function fake(over: Partial<InductionVoiceBridge> = {}, rigOver: Partial<Inducti
     canStart: true,
     start: rec('start'),
     stop: rec('stop'),
+    canLoad: true,
     ...rigOver,
   };
   const b: InductionVoiceBridge = {
@@ -91,6 +92,7 @@ function fake(over: Partial<InductionVoiceBridge> = {}, rigOver: Partial<Inducti
     setPart: rec('setPart'),
     showSimulation: rec('showSimulation'),
     goToStage: rec('goToStage'),
+    setLoad: rec('setLoad'),
     ...over,
   };
   return { b, calls, tools: buildInductionVoiceTools(() => b) };
@@ -178,5 +180,22 @@ test('go_to_step opens a procedure stage and reads it back', () => {
 test('set_nozzle answers in one line and changes nothing', () => {
   const { tools, calls } = fake();
   assert.match(tools.set_nozzle({ step: 1 }), /no nozzle/);
+  assert.deepEqual(calls, []);
+});
+
+test('set_control sets the brake load in half kilogram steps, and validates', () => {
+  const { tools, calls } = fake();
+  assert.match(tools.set_control({ control: 'load_kg', value: '12.3' }), /12.5 kg/);
+  assert.match(tools.set_control({ control: 'Load kg', value: 0 }), /0 kg/);
+  assert.deepEqual(calls.filter((c) => c.startsWith('setLoad')), ['setLoad:[12.5]', 'setLoad:[0]']);
+  calls.length = 0;
+  for (const bad of [{ control: 'load_kg', value: 41 }, { control: 'load_kg', value: -1 }, { control: 'load_kg', value: 'heavy' }, { control: 'speed', value: 3 }, {}])
+    assert.match(tools.set_control(bad), /must be|Unknown control/);
+  assert.deepEqual(calls, []);
+});
+
+test('set_control refuses a load change during the emergency stop or a pause', () => {
+  const { tools, calls } = fake({}, { canLoad: false });
+  assert.match(tools.set_control({ control: 'load_kg', value: 5 }), /cannot change/);
   assert.deepEqual(calls, []);
 });

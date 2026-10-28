@@ -30,6 +30,7 @@ function fake(over: Partial<SortingVoiceBridge> = {}) {
     size: 4,
     preset: 'random',
     setStep: rec('setStep'),
+    newInput: rec('newInput'),
     showVisualiser: rec('showVisualiser'),
     ...over,
   };
@@ -90,4 +91,21 @@ test('tools with no control on this lab answer in one line and change nothing', 
 test('explain_topic rejects a topic the lab does not have', () => {
   const { tools } = fake();
   assert.equal(tools.explain_topic({ topic: 'venturi' }), 'Topic must be one of: principle, partition, cost, results.');
+});
+
+test('set_control sets the array size and the preset, and validates', () => {
+  const { tools, calls } = fake();
+  assert.match(tools.set_control({ control: 'array_size', value: '20' }), /array of 20/);
+  assert.match(tools.set_control({ control: 'preset', value: 'Nearly sorted' }), /nearly sorted array of 4/);
+  assert.deepEqual(calls.filter((c) => c.startsWith('newInput')), ['newInput:[20,"random"]', 'newInput:[4,"nearly"]']);
+  calls.length = 0;
+  for (const bad of [
+    { control: 'array_size', value: 5 },
+    { control: 'array_size', value: 31 },
+    { control: 'array_size', value: 'many' },
+    { control: 'preset', value: 'sorted' },
+    { control: 'speed', value: 3 },
+    {},
+  ]) assert.match(tools.set_control(bad), /must be|Unknown control/);
+  assert.deepEqual(calls, []);
 });

@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EXPERIMENT_TITLES } from '@/lib/account';
@@ -12,6 +12,7 @@ import {
   KIND_LABEL,
   errorMessage,
   formatAnswer,
+  formatWhen,
   getMyViva,
   startViva,
   type AnswerPayload,
@@ -21,7 +22,7 @@ import { OralInterview } from './oral-interview';
 
 // The oral viva: the examiner is spoken, the student dictates or types, and the transcript is kept with the marks.
 // Typed answers are not offered for vivas. With onExit (the experiment page) there is no link to the viva list.
-export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void }) {
+export function VivaAttempt({ id, onExit, unfinishedExtra }: { id: string; onExit?: () => void; unfinishedExtra?: ReactNode }) {
   const vivaId = Number(id);
   const [detail, setDetail] = useState<MyVivaDetail | null>(null);
   const [parts, setParts] = useState<ComponentInfo[]>([]);
@@ -99,6 +100,7 @@ export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void })
           <Button onClick={begin} disabled={busy}>
             Start the oral viva <ArrowRight />
           </Button>
+          {unfinishedExtra}
         </section>
       </div>
     );
@@ -112,8 +114,16 @@ export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void })
       <div className="mx-auto max-w-2xl space-y-6">
         {back}
         <section className="glass space-y-3 rounded-lg p-6 md:p-8">
-          <p className="text-sm text-muted-foreground">{viva.title}</p>
+          <p className="text-sm text-muted-foreground">
+            {viva.title} · {EXPERIMENT_TITLES[viva.experimentId] ?? viva.experimentId}
+          </p>
           <h1 className="text-3xl font-semibold tracking-[-0.025em]">Submitted</h1>
+          {(attempt.submittedAt ?? viva.submittedAt ?? viva.createdAt) && (
+            <p className="text-sm text-muted-foreground">
+              {attempt.submittedAt ?? viva.submittedAt ? 'Submitted' : 'Created'}{' '}
+              {formatWhen((attempt.submittedAt ?? viva.submittedAt ?? viva.createdAt)!)}
+            </p>
+          )}
           <p className="num text-4xl font-semibold">
             {score} <span className="text-lg font-normal text-muted-foreground">of {viva.maxScore}</span>
           </p>
@@ -208,6 +218,7 @@ export function VivaAttempt({ id, onExit }: { id: string; onExit?: () => void })
         </p>
       </div>
       <OralInterview vivaId={vivaId} title={viva.title} questions={questions} parts={parts} onDone={reload} />
+      {unfinishedExtra}
     </div>
   );
 }

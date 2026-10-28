@@ -5,10 +5,12 @@ import {
   HttpCode,
   Post,
   Req,
+  Res,
   ServiceUnavailableException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -22,6 +24,7 @@ import {
 } from '../db/repo';
 import { AuthGuard, toPublicUser, type AuthedRequest } from './auth.guard';
 import { verifyPassword } from './password';
+import { clearSessionCookie, setSessionCookie } from './session-cookie';
 
 class LoginDto {
   @IsEmail()
@@ -50,20 +53,21 @@ function firebaseAuth() {
 export class AuthController {
   @Post('login')
   @HttpCode(200)
-  async login(@Body() dto: LoginDto) {
+  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const user = await userByEmail(dto.email.toLowerCase());
     if (!user || !verifyPassword(dto.password, user.password_hash)) {
       throw new UnauthorizedException('Email or password is incorrect');
     }
     const token = await createSession(user.id);
     await insertActivity(user.id, 'signed_in', null);
+    setSessionCookie(req, res, token);
     return { token, user: toPublicUser(user) };
   }
 
   // Google sign-in: the browser signs in with Firebase and sends the ID token here. Any Google account can sign up.
   @Post('firebase')
   @HttpCode(200)
-  async firebase(@Body() dto: FirebaseLoginDto) {
+  async firebase(@Body() dto: FirebaseLoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const decoded = await firebaseAuth()
       .verifyIdToken(dto.idToken)
       .catch(() => null);
@@ -76,14 +80,16 @@ export class AuthController {
       (await createGoogleUser(email, decoded.name?.trim() || email.split('@')[0]));
     const token = await createSession(user.id);
     await insertActivity(user.id, 'signed_in', null);
+    setSessionCookie(req, res, token);
     return { token, user: toPublicUser(user) };
   }
 
   @Post('logout')
   @HttpCode(200)
   @UseGuards(AuthGuard)
-  async logout(@Req() req: AuthedRequest) {
+  async logout(@Req() req: AuthedRequest, @Res({ passthrough: true }) res: Response) {
     await deleteSession(req.token);
+    clearSessionCookie(req, res);
     return { ok: true };
   }
 

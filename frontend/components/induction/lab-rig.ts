@@ -105,6 +105,8 @@ export function useRig({ armed, onError }: { armed: boolean; onError: (message: 
     [canLoad, step],
   );
 
+  const setLoad = useCallback((kg: number) => setLoadKg(Math.min(LOAD_MAX_KG, Math.max(0, kg))), []);
+
   const release = useCallback(() => {
     if (canLoad) setLoadKg(0);
   }, [canLoad]);
@@ -139,6 +141,7 @@ export function useRig({ armed, onError }: { armed: boolean; onError: (message: 
     eStop,
     togglePause,
     bump,
+    setLoad,
     release,
     resetView,
     reset,

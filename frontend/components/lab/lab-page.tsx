@@ -412,7 +412,7 @@ export function LabPage() {
             badges={badges}
           />
 
-          <main className="glass min-h-0 min-w-0 flex-1 overflow-y-auto rounded-lg p-5 md:p-7">
+          <main className="glass min-h-0 min-w-0 flex-1 overflow-y-auto rounded-lg p-5 pb-20 md:p-7 md:pb-20">
             {error && (
               <div className="mb-5 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertTriangle className="size-4 shrink-0" />

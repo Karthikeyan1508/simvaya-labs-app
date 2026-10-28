@@ -164,8 +164,12 @@ See `docs/voice-agent-setup.md` for the ElevenLabs agent configuration.
 
 ## Tests
 
-- `backend/`: 10 Jest suites, 100 tests (physics, grading, viva generation for every lab, AgenticOrg client, auth guards).
+- `backend/`: 14 Jest suites, 119 tests (physics, grading, viva generation for every lab, AgenticOrg client, auth guards, viva abandon, session cookie, log redaction, and a drift guard that compares the Zener and sorting lab text with the frontend source).
+- API smoke check (no dependencies, creates no vivas, calls no ElevenLabs or Groq): `API_URL=https://<api-host> node backend/scripts/smoke.mjs`. Add `DEMO_EMAIL` and `DEMO_PASSWORD` to also check login and the empty-text voice 400. Exits non-zero on any failure.
+- Optional cookie sessions: set `SESSION_COOKIE=true` on the API. Default is bearer tokens only.
 - `frontend/lib/`: Node test files for the voice tool handlers (`voice-*.test.ts`), the zener wiring checks (`lib/zener/*.test.ts`) and the part-matching helper.
+
+- `frontend/scripts/smoke.mjs`: `node scripts/smoke.mjs` checks the home, login and four lab routes return 200 (BASE_URL, default http://localhost:3100).
 
 Run them with the commands above. The voice tests do not start a live ElevenLabs session.
 

@@ -29,7 +29,8 @@ export type VoiceToolName =
   | 'set_pump'
   | 'set_nozzle'
   | 'go_to_step'
-  | 'explain_topic';
+  | 'explain_topic'
+  | 'set_control';
 
 export type VoiceToolHandler = (params: Record<string, unknown>) => string;
 export type VoiceTools = Record<VoiceToolName, VoiceToolHandler>;
@@ -63,6 +64,9 @@ export function bool(v: unknown): boolean | null {
 export function str(v: unknown): string {
   return typeof v === 'string' ? v.trim() : '';
 }
+
+// The agent's control name, lower-cased with spaces as underscores, so "Supply Voltage" matches supply_voltage.
+export const controlName = (v: unknown): string => str(v).toLowerCase().replace(/[\s-]+/g, '_');
 
 export const isOneOf = <T extends string>(list: readonly T[], v: string): v is T => (list as readonly string[]).includes(v);
 

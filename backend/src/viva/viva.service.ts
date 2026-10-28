@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import {
   answerRows,
+  deleteViva,
   attemptFor,
   finishAttempt,
   inTransaction,
@@ -111,10 +112,21 @@ export async function listMyVivas(userId: string) {
       const a = await attemptFor(r.id, userId);
       return {
         ...summaryOf(r),
-        myAttempt: a ? { id: a.id, status: a.status, score: a.score, pendingReview: a.pending_review === 1 } : null,
+        myAttempt: a
+          ? { id: a.id, status: a.status, score: a.score, pendingReview: a.pending_review === 1, submittedAt: a.submitted_at }
+          : null,
       };
     }),
   );
+}
+
+// Abandon a self-assessment. Only the owner, and only before submit. Questions, attempt and answers go by ON DELETE CASCADE.
+export async function abandonViva(vivaId: number, userId: string) {
+  const v = await ownViva(vivaId, userId);
+  const a = await attemptFor(v.id, userId);
+  if (a?.status === 'submitted') throw new ConflictException('A submitted self-assessment cannot be deleted');
+  await deleteViva(v.id, userId);
+  return { ok: true };
 }
 
 export async function startAttempt(vivaId: number, userId: string) {
@@ -141,6 +153,7 @@ export async function studentViva(vivaId: number, userId: string) {
       ? {
           id: a.id,
           status: a.status,
+          submittedAt: a.submitted_at,
           answers: rows
             .filter((r) => r.answer !== null)
             .map((r) => ({ questionId: r.question_id, answer: parsedAnswer(r.answer) })),

@@ -107,8 +107,38 @@ export default function PeltonScene(props: Props) {
     let shown = 0;
     let last = performance.now();
     let elapsed = 0;
+    // Click a part on the model to pick it. A drag (orbit) is not a click, so the pointer must barely move.
+    const ray = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    let downAt: { x: number; y: number } | null = null;
+    const canvas = renderer.domElement;
+    const onDown = (e: PointerEvent) => {
+      downAt = { x: e.clientX, y: e.clientY };
+    };
+    const onUp = (e: PointerEvent) => {
+      const start = downAt;
+      downAt = null;
+      const handles = rig.current;
+      if (!start || !handles || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 5) return;
+      const box = canvas.getBoundingClientRect();
+      ndc.set(((e.clientX - box.left) / box.width) * 2 - 1, -(((e.clientY - box.top) / box.height) * 2 - 1));
+      ray.setFromCamera(ndc, camera);
+      for (const hit of ray.intersectObjects(scene.children, true)) {
+        for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+          if (handles.byId.has(o.name)) {
+            latest.current.onSelect(o.name);
+            return;
+          }
+        }
+      }
+    };
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointerup', onUp);
+
     let frameId = 0;
     let appliedKey = '';
+    let litSet = new Set<string>();
+    let cleared = false;
     const projected = new THREE.Vector3();
 
     const loop = (now: number) => {
@@ -123,7 +153,15 @@ export default function PeltonScene(props: Props) {
         const key = `${p.highlight.join(',')}|${p.selected ?? ''}`;
         if (key !== appliedKey) {
           appliedKey = key;
-          setHighlight(handles, new Set(p.highlight), p.selected);
+          litSet = new Set(p.highlight);
+        }
+        // Glowing parts pulse, so they are redrawn every frame. With nothing lit, the glow is cleared once.
+        if (litSet.size > 0 || p.selected) {
+          setHighlight(handles, litSet, p.selected, elapsed);
+          cleared = false;
+        } else if (!cleared) {
+          setHighlight(handles, litSet, null, 0);
+          cleared = true;
         }
         shown += (p.explode - shown) * Math.min(1, dt * 6);
         updateRig(handles, p.state, dt);
@@ -173,6 +211,8 @@ export default function PeltonScene(props: Props) {
       disposed = true;
       fitRef.current = null;
       cancelAnimationFrame(frameId);
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointerup', onUp);
       observer.disconnect();
       controls.dispose();
       water.dispose();

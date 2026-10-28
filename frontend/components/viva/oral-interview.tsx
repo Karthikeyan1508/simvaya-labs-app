@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ChatLog, type ChatMessage } from '@/components/voice/chat';
 import { MessageBox } from '@/components/voice/message-box';
+import { VivaRig } from '@/components/viva/viva-rig';
 import type { ComponentInfo } from '@/lib/types';
 import { fetchSignedUrl } from '@/lib/voice-api';
 import { createSpeaker, type Speaker } from '@/lib/voice-speaker';
@@ -21,22 +22,24 @@ export function OralInterview({
   title,
   questions,
   parts,
+  showRig,
   onDone,
 }: {
   vivaId: number;
   title: string;
   questions: StudentQuestion[];
   parts: ComponentInfo[];
+  showRig?: boolean; // the lab has a 3D model the questions can point at
   onDone: () => void;
 }) {
   return (
     <ConversationProvider>
-      <Interview vivaId={vivaId} title={title} questions={questions} parts={parts} onDone={onDone} />
+      <Interview vivaId={vivaId} title={title} questions={questions} parts={parts} showRig={showRig} onDone={onDone} />
     </ConversationProvider>
   );
 }
 
-function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeof OralInterview>[0]) {
+function Interview({ vivaId, title, questions, parts, showRig, onDone }: Parameters<typeof OralInterview>[0]) {
   const [phase, setPhase] = useState<'ready' | 'connecting' | 'live' | 'saving' | 'done' | 'error'>('ready');
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [error, setError] = useState('');
@@ -44,6 +47,7 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
   // The highest question number the examiner has saved. The question on screen is the next one.
   const [answered, setAnswered] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
+  const [pickedPart, setPickedPart] = useState<string | null>(null);
   const [focusTick, setFocusTick] = useState(0); // bumped after a click on a choice, so the dictation box gets focus back
   const linesRef = useRef<TranscriptLine[]>([]);
   const finished = useRef(false);
@@ -130,6 +134,7 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
               if (res.ok) {
                 setAnswered((n) => Math.max(n, Number(args.question_number) || 0));
                 setPicked(null);
+                setPickedPart(null);
               }
               return res.message;
             } catch {
@@ -166,6 +171,14 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
     text: l.text,
     at: l.at,
   }));
+
+  // The model is shown for "name the highlighted part" and "click the part" questions.
+  const rigKind = showRig && current && (current.kind === 'highlight' || current.kind === 'point') ? current.kind : undefined;
+  const pickPart = (id: string) => {
+    setPickedPart(id);
+    setFocusTick((n) => n + 1);
+    send(`I pick the ${parts.find((p) => p.id === id)?.label ?? id} (part id ${id}).`);
+  };
 
   const choose = (k: number) => {
     setPicked(k);
@@ -211,12 +224,29 @@ function Interview({ vivaId, title, questions, parts, onDone }: Parameters<typeo
       {notice && live && <p className="text-xs text-muted-foreground">Saved: {notice}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <section aria-label="Interview chat" className="glass flex h-[min(74vh,700px)] flex-col overflow-hidden rounded-lg">
+      <section
+        aria-label="Interview chat"
+        className={cn(
+          'glass flex flex-col overflow-hidden rounded-lg',
+          // The model needs room, so the card grows while it is on screen.
+          rigKind ? 'h-[min(94vh,860px)]' : 'h-[min(74vh,700px)]',
+        )}
+      >
         <ChatLog
           messages={chat}
           empty="The conversation appears here. The examiner speaks first."
           className="min-h-0 flex-1"
         />
+
+        {live && rigKind && (
+          <VivaRig
+            parts={parts}
+            highlight={rigKind === 'highlight' && current?.highlightPartId ? [current.highlightPartId] : []}
+            selected={rigKind === 'point' ? pickedPart : null}
+            onPick={rigKind === 'point' ? pickPart : undefined}
+            caption={rigKind === 'highlight' ? 'Name the part that glows.' : 'Click the part the examiner asks for.'}
+          />
+        )}
 
         {live && choices && (
           <div aria-label="Choose an answer" className="space-y-2 border-t border-border/60 bg-muted/30 p-3">

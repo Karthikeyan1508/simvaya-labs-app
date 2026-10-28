@@ -217,7 +217,7 @@ export function VivaAttempt({ id, onExit, unfinishedExtra }: { id: string; onExi
           Dictate or type your answers. They are saved as you send them. When the examiner has finished, the interview is submitted.
         </p>
       </div>
-      <OralInterview vivaId={vivaId} title={viva.title} questions={questions} parts={parts} onDone={reload} />
+      <OralInterview vivaId={vivaId} title={viva.title} questions={questions} parts={parts} showRig={viva.experimentId === 'pelton-wheel'} onDone={reload} />
       {unfinishedExtra}
     </div>
   );

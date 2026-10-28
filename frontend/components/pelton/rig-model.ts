@@ -147,12 +147,15 @@ export function applyExplode(h: RigHandles, e: number) {
 }
 
 // Yellow = current step parts, blue = selected part.
-export function setHighlight(h: RigHandles, stepIds: Set<string>, selected: string | null) {
+// Highlighted parts glow amber and pulse with time `t` (seconds), selected parts glow blue. The glow is strong because the
+// rig is pale and a faint tint is not seen.
+export function setHighlight(h: RigHandles, stepIds: Set<string>, selected: string | null, t = 0) {
+  const pulse = 0.5 + 0.5 * Math.sin(t * 5);
   for (const p of h.parts) {
     const isSelected = p.id === selected;
     const isStep = stepIds.has(p.id);
-    const color = isSelected ? 0x3b82f6 : isStep ? 0xf59e0b : 0x000000;
-    const intensity = isSelected ? 0.45 : isStep ? 0.35 : 0;
+    const color = isSelected ? 0x3b82f6 : isStep ? 0xff9500 : 0x000000;
+    const intensity = isSelected ? 0.75 + 0.2 * pulse : isStep ? 0.8 + 0.5 * pulse : 0;
     for (const m of p.materials) {
       m.emissive.setHex(color);
       m.emissiveIntensity = intensity;

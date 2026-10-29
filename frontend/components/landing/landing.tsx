@@ -9,6 +9,7 @@ import { LandingShader } from './landing-shader';
 import { Marquee } from './marquee';
 import { Nav } from './nav';
 import { Steps } from './steps';
+import { Wispr } from './wispr';
 
 // The landing page. Visitors and signed-in users both see it; the calls to action follow the session.
 export function Landing() {
@@ -18,12 +19,13 @@ export function Landing() {
   const demoHref = authed ? '/dashboard/demo' : '/login';
 
   return (
-    <main className="relative min-h-dvh overflow-x-clip text-foreground">
+    <main className="relative isolate min-h-dvh overflow-x-clip text-foreground">
       <LandingShader />
       <Nav />
       <EngineHero primaryHref={primaryHref} primaryLabel="Start a lab" />
       <Marquee />
       <Features />
+      <Wispr href={primaryHref} />
       <Steps />
       <CodeBand />
       <Closing primaryHref={primaryHref} primaryLabel="Start a lab" demoHref={demoHref} />

@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/account';
 import { cn } from '@/lib/utils';
 import { fetchSignedUrl } from '@/lib/voice-api';
 import { createSpeaker, type Speaker } from '@/lib/voice-speaker';
-import { partsMentioned } from '@/lib/voice-parts';
+import { cleanReply, partsMentioned } from '@/lib/voice-parts';
 import type { VoiceLabBridge, VoiceToolFactory, VoiceTools } from '@/lib/voice-lab';
 
 type Line = { id: number; role: 'user' | 'agent'; text: string };
@@ -87,8 +87,10 @@ function AssistantPanel<L extends VoiceLabBridge>({ lab, makeTools }: { lab: L; 
     onMessage: ({ message: text, role }) => {
       // The student's own lines are added when they are sent, so only the assistant is handled here.
       if (role !== 'agent') return;
-      addLine('agent', text);
-      speaker.current?.speak(text);
+      const reply = cleanReply(text);
+      if (!reply) return;
+      addLine('agent', reply);
+      speaker.current?.speak(reply);
       // What the assistant names is lit on the rig, even when the model does not call the highlight tool.
       const ids = partsMentioned(latest.current.parts, text);
       if (ids.length) latest.current.setVoiceHighlight(ids);

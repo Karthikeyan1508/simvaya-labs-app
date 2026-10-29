@@ -10,6 +10,7 @@ import { VivaRig } from '@/components/viva/viva-rig';
 import type { ComponentInfo } from '@/lib/types';
 import { fetchSignedUrl } from '@/lib/voice-api';
 import { createSpeaker, type Speaker } from '@/lib/voice-speaker';
+import { cleanReply } from '@/lib/voice-parts';
 import { firstMessageFor, interviewPrompt, labToolStandIns, spokenPayload } from '@/lib/viva-oral';
 import { errorMessage, saveSpokenAnswer, saveTranscript, submitViva, type StudentQuestion, type TranscriptLine } from '@/lib/viva';
 import { cn } from '@/lib/utils';
@@ -68,8 +69,10 @@ function Interview({ vivaId, title, questions, parts, showRig, onDone }: Paramet
     onMessage: ({ message, role }) => {
       // The student's lines are added when they are sent. Only the examiner is handled here, and it is spoken.
       if (role === 'user') return;
-      addLine('examiner', message);
-      speaker.current?.speak(message);
+      const text = cleanReply(message);
+      if (!text) return;
+      addLine('examiner', text);
+      speaker.current?.speak(text);
     },
     onDisconnect: () => {
       // The call dropped or the agent ended it: save what was said and submit, unless we already did.

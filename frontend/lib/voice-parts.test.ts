@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { partsMentioned } from './voice-parts.ts';
+import { cleanReply, partsMentioned } from './voice-parts.ts';
 
 const parts = [
   { id: 'nozzle', label: 'Nozzle' },
@@ -20,4 +20,10 @@ test('matches a multi-word label by its last word', () => {
 test('returns nothing when no part is named or there are no parts', () => {
   assert.deepEqual(partsMentioned(parts, 'Nothing about machinery here.'), []);
   assert.deepEqual(partsMentioned(null, 'The nozzle'), []);
+});
+
+test('drops a stray < or half a tag from the end of a reply', () => {
+  assert.equal(cleanReply("Thank you, I'll record option 0.\n<\n\n"), "Thank you, I'll record option 0.");
+  assert.equal(cleanReply('Next question. <tool'), 'Next question.');
+  assert.equal(cleanReply('Is 2 < 3? Yes.'), 'Is 2 < 3? Yes.');
 });

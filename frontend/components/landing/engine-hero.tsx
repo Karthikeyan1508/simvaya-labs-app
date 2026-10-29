@@ -114,9 +114,14 @@ export function EngineHero({ primaryHref, primaryLabel }: { primaryHref: string;
     // Draw one frame at scroll position p, and set the text chapters and their dots to match.
     const draw = (p: number) => {
       const e = explodeAt(p);
-      engine.pose(p * Math.PI * 4 + 0.6, e); // two full turns of the crank over the section
-      placeCamera(camera, p, mount.clientWidth / Math.max(1, mount.clientHeight), e);
-      renderer.render(scene, camera);
+      // A stage with no width (hidden, or not laid out yet) makes the camera distance infinite and crashes three.js,
+      // which takes the whole page down. Skip the 3D frame then; the text chapters below still update.
+      const aspect = mount.clientWidth / Math.max(1, mount.clientHeight);
+      if (aspect > 0) {
+        engine.pose(p * Math.PI * 4 + 0.6, e); // two full turns of the crank over the section
+        placeCamera(camera, p, aspect, e);
+        renderer.render(scene, camera);
+      }
       CHAPTERS.forEach((_, i) => {
         const a = chapterAlpha(i, p);
         const node = chapter.current[i];
